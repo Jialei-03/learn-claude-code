@@ -43,7 +43,7 @@ npm run serve          # 本地预览
 构建需要几个对照仓库放在本仓库旁边（可用环境变量 `MOX_SRC`、`PI_SRC`、`SRT_SRC`、`SDKPY_SRC` 修改路径）。源码摘录固定在下面的版本，构建时会校验提交：
 
 ```bash
-git clone --branch v2 https://github.com/Jialei-03/learn-pi-agent.git ../learn-pi-agent   # mox 和扩展在 v2 分支
+git clone https://github.com/Jialei-03/learn-pi-agent.git ../learn-pi-agent
 git clone --branch v1.5.0 https://github.com/earendil-works/pi.git ../pi-v1.5.0
 git clone --branch v0.0.79 https://github.com/anthropics/sandbox-runtime.git ../sandbox-runtime-v0.0.79
 git clone --branch v0.2.165 https://github.com/anthropics/claude-agent-sdk-python.git ../claude-agent-sdk-python-v0.2.165

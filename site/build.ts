@@ -156,7 +156,7 @@ function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss', args: string, where:
     : kind === 'pi'
     ? `${PI.repo}/blob/${PI.commit}/${ex.file}#L${ex.start}-L${ex.end}`
     : kind === 'mox'
-      ? `https://github.com/Jialei-03/learn-pi-agent/blob/v2/${ex.file}#L${ex.start}-L${ex.end}`
+      ? `https://github.com/Jialei-03/learn-pi-agent/blob/main/${ex.file}#L${ex.start}-L${ex.end}`
       : `https://github.com/Jialei-03/learn-claude-code/blob/main/${ex.file}#L${ex.start}-L${ex.end}`;
   if (kind === 'pi' || oss) citations.push({ source: oss ?? 'pi', chapter: where.slug, title: where.title, file: ex.file, start: ex.start, end: ex.end, url });
   const badge = oss ? `<span class="src-badge oss">${OSS[oss].label} ${OSS[oss].version} · ${OSS[oss].license}</span>`
