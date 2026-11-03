@@ -1,0 +1,138 @@
+{
+  "title": "Claude Code 源码工程地图",
+  "source": {
+    "repo": "https://github.com/ChinaSiro/claude-code-sourcemap",
+    "commit": "a8a678cb6244e6770e1e421767ff0987a1d95549",
+    "version": "2.1.88",
+    "directory": "../claude-code-sourcemap-source",
+    "env": "CC_SOURCE_DIR"
+  },
+  "edgeSemantics": "主题分类与实现入口；不是完整调用图",
+  "groups": [
+    {
+      "label": "入口与循环",
+      "nodes": [
+        {
+          "label": "CLI 快速分支",
+          "file": "restored-src/src/entrypoints/cli.tsx",
+          "anchor": "async function main(): Promise<void>",
+          "span": 60
+        },
+        {
+          "label": "queryLoop 状态",
+          "file": "restored-src/src/query.ts",
+          "anchor": "async function* queryLoop(",
+          "span": 100
+        }
+      ]
+    },
+    {
+      "label": "请求与记忆",
+      "nodes": [
+        {
+          "label": "提示合成",
+          "file": "restored-src/src/utils/systemPrompt.ts",
+          "anchor": "export function buildEffectiveSystemPrompt(",
+          "span": 105
+        },
+        {
+          "label": "记忆投影",
+          "file": "restored-src/src/utils/claudemd.ts",
+          "anchor": "export const getClaudeMds = (",
+          "span": 51
+        }
+      ]
+    },
+    {
+      "label": "工具与权限",
+      "nodes": [
+        {
+          "label": "并发批次",
+          "file": "restored-src/src/services/tools/toolOrchestration.ts",
+          "anchor": "function partitionToolCalls(",
+          "span": 37
+        },
+        {
+          "label": "规则决策",
+          "file": "restored-src/src/utils/permissions/permissions.ts",
+          "anchor": "export async function checkRuleBasedPermissions(",
+          "span": 102
+        }
+      ]
+    },
+    {
+      "label": "会话与压缩",
+      "nodes": [
+        {
+          "label": "转录记录",
+          "file": "restored-src/src/utils/sessionStorage.ts",
+          "anchor": "export async function recordTranscript(",
+          "span": 43
+        },
+        {
+          "label": "消息重建",
+          "file": "restored-src/src/services/compact/compact.ts",
+          "anchor": "export function buildPostCompactMessages(",
+          "span": 18
+        }
+      ]
+    },
+    {
+      "label": "插件与扩展",
+      "nodes": [
+        {
+          "label": "Skill metadata",
+          "file": "restored-src/src/skills/loadSkillsDir.ts",
+          "anchor": "export function parseSkillFrontmatterFields(",
+          "span": 83
+        },
+        {
+          "label": "PreToolUse",
+          "file": "restored-src/src/utils/hooks.ts",
+          "anchor": "export async function* executePreToolHooks<ToolInput>(",
+          "span": 52
+        },
+        {
+          "label": "MCP 发现",
+          "file": "restored-src/src/services/mcp/client.ts",
+          "anchor": "export async function getMcpToolsCommandsAndResources(",
+          "span": 58
+        }
+      ]
+    },
+    {
+      "label": "子 Agent 与隔离",
+      "nodes": [
+        {
+          "label": "子任务装配",
+          "file": "restored-src/src/tools/AgentTool/runAgent.ts",
+          "anchor": "export async function* runAgent({",
+          "span": 100
+        },
+        {
+          "label": "命令沙箱包装",
+          "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+          "anchor": "async function wrapWithSandbox(",
+          "span": 26
+        }
+      ]
+    },
+    {
+      "label": "无界面与 SDK",
+      "nodes": [
+        {
+          "label": "Headless 生命周期",
+          "file": "restored-src/src/cli/print.ts",
+          "anchor": "export async function runHeadless(",
+          "span": 62
+        },
+        {
+          "label": "SDK 占位边界",
+          "file": "restored-src/src/entrypoints/agentSdkTypes.ts",
+          "anchor": "export function query(): Query",
+          "span": 10
+        }
+      ]
+    }
+  ]
+}

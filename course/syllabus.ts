@@ -4,6 +4,13 @@
 /** 观察的对象：实验用的 Claude Code 版本 */
 export const CC = { version: '2.1.296', docs: 'https://code.claude.com/docs' };
 
+/** 用户指定的非官方 sourcemap 还原版本，作为课程源码主线。 */
+export const CC_SOURCE = {
+  repo: 'https://github.com/ChinaSiro/claude-code-sourcemap',
+  commit: 'a8a678cb6244e6770e1e421767ff0987a1d95549',
+  version: '2.1.88', dir: '../claude-code-sourcemap-source', env: 'CC_SOURCE_DIR',
+};
+
 /** 对照的 Pi 源码（与 Learn Pi Agent 相同的固定版本） */
 export const PI = {
   version: 'v1.5.0',
@@ -34,47 +41,47 @@ export interface PartInfo { id: string; title: string; subtitle: string; chapter
 
 export const parts: PartInfo[] = [
   {
-    id: 'p0', title: '开始之前', subtitle: '怎样研究一个看不到源码的 Agent',
+    id: 'p0', title: '开始之前', subtitle: '沿还原源码读懂一个产品级 Agent',
     chapters: [
-      { n: 0, slug: '00-method', title: '方法：文档、实验与对照', summary: '为什么不用泄露的源码；用开放模型驱动 Claude Code，截下它的请求，记下它的事件。', status: 'ready' },
+      { n: 0, slug: '00-method', title: '方法：源码、版本与证据', summary: '固定 sourcemap 2.1.88 的提交，建立函数与调用链证据；把 2.1.296 实验单独标记。', status: 'ready' },
     ],
   },
   {
     id: 'p1', title: '一次运行', subtitle: '从输入到结束',
     chapters: [
-      { n: 1, slug: '01-one-run', title: '一次运行的全貌：事件流与会话文件', summary: 'stream-json 的每一种事件、会话 JSONL 的每一种记录，以及它们和 mox 的对应关系。', status: 'ready' },
-      { n: 2, slug: '02-request', title: '发给模型的请求：系统提示、工具与缓存', summary: '用本地代理截下请求：里面有什么、多大、缓存断点放在哪里。', status: 'ready' },
-      { n: 3, slug: '03-tools', title: '内置工具：每个工具的契约与边界', summary: '读、改、写、搜、执行：参数、结果的形状、限制和那些“必须先读再改”的规则。', status: 'ready' },
+      { n: 1, slug: '01-one-run', title: '一次运行：启动、主循环与状态', summary: '从 CLI 快速分支追到 queryLoop，区分迭代状态、事件交付和持久记录。', status: 'ready' },
+      { n: 2, slug: '02-request', title: '模型请求：提示合成与 API 参数', summary: '读 system prompt 来源优先级与最终 messages、tools、缓存参数构造。', status: 'ready' },
+      { n: 3, slug: '03-tools', title: '工具：调度、校验与编辑契约', summary: '并发批次如何划分，参数在哪一层被拒绝，Edit 怎样保证先读后改。', status: 'ready' },
     ],
   },
   {
     id: 'p2', title: '上下文', subtitle: '记住什么、忘掉什么',
     chapters: [
-      { n: 4, slug: '04-memory', title: 'CLAUDE.md 与自动记忆', summary: '哪些文件会被加载、以什么形式进入请求；自动记忆写在哪里。', status: 'ready' },
-      { n: 5, slug: '05-sessions-compaction', title: '会话、恢复与压缩', summary: '恢复时逐字重放；压缩请求借用缓存；什么被保留、什么被重新读取；一次摘要出错的真实案例。', status: 'ready' },
+      { n: 4, slug: '04-memory', title: 'CLAUDE.md 与记忆注入', summary: '从 include 递归和去重，到类型过滤与最终上下文投影。', status: 'ready' },
+      { n: 5, slug: '05-sessions-compaction', title: '会话、恢复与压缩', summary: '转录存储、窗口阈值、失败断路器和压缩后消息重建。', status: 'ready' },
     ],
   },
   {
     id: 'p3', title: '控制与扩展', subtitle: '谁能决定 Agent 做什么',
     chapters: [
-      { n: 6, slug: '06-permissions', title: '权限与模式', summary: '五道关逐一验证：规则怎样匹配、钩子和规则谁说了算、六种模式、自动模式的两阶段分类器。', status: 'ready' },
-      { n: 7, slug: '07-hooks', title: 'Hooks：每个事件的真实数据', summary: '同一份钩子配置交给真实模型：被拦下后它换了九种写法；钩子、规则、沙箱各能挡住什么。', status: 'ready' },
-      { n: 8, slug: '08-mcp', title: 'MCP：工具搜索与推迟加载', summary: '在客户端和服务器之间窃听：握手、结果处理、列表变化对缓存的影响，以及工具搜索的 tool_reference。', status: 'ready' },
-      { n: 9, slug: '09-skills', title: 'Skills 与命令', summary: '五种调用方式：正文怎样渲染、动态注入的坑、为什么授予权限的 Skill 调用前要批准。', status: 'ready' },
+      { n: 6, slug: '06-permissions', title: '权限：规则阶段与最终决策', summary: '追踪 deny、ask、工具专用检查和模式分支，避免把局部结果当最终授权。', status: 'ready' },
+      { n: 7, slug: '07-hooks', title: 'Hooks：匹配、输入与失败边界', summary: '把工具校验顺序、Hook 选择与真实执行阶段连起来。', status: 'ready' },
+      { n: 8, slug: '08-mcp', title: 'MCP：发现、调用与结果适配', summary: '检查配置、连接、工具发现、模型可见性和多模态结果转换。', status: 'ready' },
+      { n: 9, slug: '09-skills', title: 'Skills：metadata 与执行入口', summary: '解析工具权限、模型、fork 等字段，再追 SkillTool 如何查找和展开。', status: 'ready' },
     ],
   },
   {
     id: 'p4', title: '多 Agent 与长任务', subtitle: '把工作分出去，让它一直做下去',
     chapters: [
-      { n: 10, slug: '10-subagents', title: '子 Agent', summary: '三方的请求对比；前台的报告被标成“模型输出”，后台的完成后以通知开启新一轮。', status: 'ready' },
-      { n: 11, slug: '11-sandbox', title: '沙箱', summary: '八条命令试探边界，再读开源的 sandbox-runtime：默认拒绝的 Seatbelt 策略、域名代理、藏在代理用户名里的调用 id。', status: 'ready' },
+      { n: 10, slug: '10-subagents', title: '子 Agent：上下文与生命周期', summary: '读子任务 schema、工具池、模型选择、前后台和取消边界。', status: 'ready' },
+      { n: 11, slug: '11-sandbox', title: '沙箱：配置适配与命令包装', summary: '从产品权限规则到 sandbox runtime 参数，分清配置与系统执行证据。', status: 'ready' },
     ],
   },
   {
     id: 'p5', title: '工程化', subtitle: '把 Claude Code 当部件用',
     chapters: [
-      { n: 12, slug: '12-headless-sdk', title: '无界面模式与 Agent SDK', summary: '窃听 SDK 与 Claude Code 之间的双向协议，再用开源的 Python 版 SDK 源码对照：审批、钩子、MCP 都是跨进程的回调。', status: 'ready' },
-      { n: 13, slug: '13-synthesis', title: '总结：Claude Code、Pi 与 mox', summary: '一张结构图、一张数字表、七条原则、三方对照，以及五分钟讲清楚一个 coding agent。', status: 'ready' },
+      { n: 12, slug: '12-headless-sdk', title: '无界面与 SDK：协议和实现边界', summary: '读 Headless 与 StructuredIO，并识别 SDK 类型入口中的占位实现。', status: 'ready' },
+      { n: 13, slug: '13-synthesis', title: '总结：源码地图与工程面试', summary: '对照三项目的源码版本、验证范围和架构取舍，用一个反例讲清机制。', status: 'ready' },
     ],
   },
 ];

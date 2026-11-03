@@ -1,0 +1,9 @@
+{
+  "repo": "https://github.com/ChinaSiro/claude-code-sourcemap.git",
+  "commit": "a8a678cb6244e6770e1e421767ff0987a1d95549",
+  "version": "2.1.88",
+  "sourceKind": "unofficial reconstruction of public npm source map sourcesContent",
+  "copyright": "Anthropic; not represented as an officially open-source Claude Code repository",
+  "observationVersion": "2.1.296",
+  "observedDate": "2026-11-03"
+}

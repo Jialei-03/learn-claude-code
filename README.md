@@ -1,82 +1,90 @@
 # Learn Claude Code
 
-**拆开 Claude Code：不看源码，看它做了什么。**
+**沿源码，读懂 Claude Code 的工程取舍。**
 
-Claude Code 是闭源的。这门课不读它的源码（也不用网上流传的 sourcemap），而是用三类证据研究它的工程设计：
+课程主线依据你指定的 [ChinaSiro/claude-code-sourcemap](https://github.com/ChinaSiro/claude-code-sourcemap)，固定 **2.1.88 · `a8a678cb6244e6770e1e421767ff0987a1d95549`**。按入口、状态、调用链和失败路径解读，每章至少两处固定源码依据。
 
-- **官方文档**：它承诺了什么行为，每个说法都给出链接；
-- **可观察的接口**：`-p` 模式的事件流、钩子收到的数据、会话文件；
-- **网络请求**：把 `ANTHROPIC_BASE_URL` 指向一个本地记录代理，截下它发给模型的每一个请求；
-- **开源组件的源码**：Claude Code 的沙箱运行时 [sandbox-runtime](https://github.com/anthropics/sandbox-runtime)（Apache-2.0）和 [Python 版 Agent SDK](https://github.com/anthropics/claude-agent-sdk-python)（MIT）是 Anthropic 以开源许可发布的，课程固定版本摘录，并和录制逐项核对。
+该仓库通过公开 npm 包的 source map 还原文件，是非官方整理材料；版权仍归 Anthropic，不代表官方内部仓库或官方开源授权。课程以原创分析、函数和行号索引为主，不把整份还原源码再复制到这里。
 
-再和开源的 [Pi](https://github.com/earendil-works/pi)、以及你在 [Learn Pi Agent](https://github.com/Jialei-03/learn-pi-agent) 里亲手写的 mox 逐项对照。每一章都有可重复的实验、用真实模型录制的运行记录和面试题。
+原来的 **Claude Code 2.1.296** 实验与真实模型记录保留在各章末尾的可展开对照区。源码版本与实验版本明确分开：后续版本的一次观察不能直接证明 2.1.88 的行为。
 
-## 学到什么
+## 从这里开始
 
-| 章 | 内容 |
+- [第 0 章：源码、版本与证据](course/00-method.md)
+- [源码工程思维导图](docs/engineering-map.md)，GitHub 可直接渲染 Mermaid
+- [可编辑 JSON Canvas](engineering/architecture.canvas)，可放进 Obsidian
+- [工程解读工具与方法](docs/engineering-workflow.md)
+
+## 源码依据怎样校验
+
+`course/source-references.json` 声明 30 个源码定位点。构建时会：
+
+1. 校验还原仓库 HEAD 与 `source.lock.json` 的固定提交一致。
+2. 校验 npm metadata 的版本为 2.1.88，以及 `cli.js.map` 的 Git blob 与提交一致。
+3. 把每个引用文件与 map 中的 `sourcesContent` 逐字比较。
+4. 校验函数/分支锚点唯一，生成带固定提交与行号的证据卡。
+5. 运行独立版本的离线录制分析；不启动真实模型。
+
+结果保存在构建产物 `site/dist/source-evidence.json`。源码存在、feature 分支可达、实际产品运行是不同证据层级，正文会逐项区分。例如 SDK 类型入口中的 query 是占位实现，不能当作真正执行器。
+
+## 课程目录
+
+| 章 | 工程问题与主要源码 |
 | --- | --- |
-| 0 | 方法：文档、实验与对照；为什么不用泄露的源码 |
-| 1 | 一次运行的全貌：stream-json 事件流与会话文件 |
-| 2 | 发给模型的请求：三块系统提示、是它 8 倍大的工具定义、缓存断点 |
-| 3 | 内置工具的契约：先读后改、大输出、校验先于钩子、并行结果按完成顺序回来 |
-| 4 | CLAUDE.md 与自动记忆：金丝雀实验，按需加载 |
-| 5 | 会话、恢复与压缩：借用缓存的摘要请求、摘要出错的真实案例、反复压缩的断路器 |
-| 6 | 权限与模式：五道关、六种模式、自动模式的两阶段分类器 |
-| 7 | Hooks：同一份钩子配置交给真实模型，被拦下后它换了九种写法 |
-| 8 | MCP：窃听握手、结果处理、工具列表变化与工具搜索 |
-| 9 | Skills 与命令：渲染、动态注入、为什么授予权限的 Skill 调用前要批准 |
-| 10 | 子 Agent：三方的请求对比，前台与后台，报告被标为模型输出 |
-| 11 | 沙箱：Seatbelt 与域名代理；读 sandbox-runtime 的源码，录制里看到的每一样东西都找到出处 |
-| 12 | 无界面模式与 Agent SDK：窃听双向协议，再用开源的 Python 版 SDK 源码对照 |
-| 13 | 总结：结构图、关键数字、七条原则、三方对照 |
+| 0 | 方法：sourcemap、版本锁和 feature 边界 |
+| 1 | 一次运行：bootstrap → query → queryLoop 的 State |
+| 2 | 请求：system prompt 合成与最终 API params |
+| 3 | 工具：并发批次、参数校验与先读后改 |
+| 4 | 记忆：CLAUDE.md include、类型过滤与最终注入 |
+| 5 | 会话与压缩：转录、阈值、断路器与消息重建 |
+| 6 | 权限：规则阶段与最终决策 |
+| 7 | Hooks：匹配、输入、阻塞与失败 |
+| 8 | MCP：发现、工具投影与结果适配 |
+| 9 | Skills：metadata、工具入口与 fork |
+| 10 | 子 Agent：定义、工具池、前后台与生命周期 |
+| 11 | 沙箱：产品规则到运行时配置与命令包装 |
+| 12 | Headless / SDK：StructuredIO 与占位实现边界 |
+| 13 | 三项目对照与实习面试的工程证据 |
 
-## 快速开始
+## 构建与预览
 
-需要 Node.js 22.19 或更新版本。
+需要 Node.js 22.19+。
 
 ```bash
 npm install
-npm run build          # 生成 site/dist：运行每一章的离线分析，把输出嵌进页面
-npm run serve          # 本地预览
+npm run setup:source    # 准备旁边的固定 sourcemap 克隆；不覆盖已有不同版本目录
 ```
 
-构建需要几个对照仓库放在本仓库旁边（可用环境变量 `MOX_SRC`、`PI_SRC`、`SRT_SRC`、`SDKPY_SRC` 修改路径）。源码摘录固定在下面的版本，构建时会校验提交：
+对照源码仍需放在旁边，已存在时直接复用：
 
 ```bash
 git clone https://github.com/Jialei-03/learn-pi-agent.git ../learn-pi-agent
 git clone --branch v1.5.0 https://github.com/earendil-works/pi.git ../pi-v1.5.0
 git clone --branch v0.0.79 https://github.com/anthropics/sandbox-runtime.git ../sandbox-runtime-v0.0.79
 git clone --branch v0.2.165 https://github.com/anthropics/claude-agent-sdk-python.git ../claude-agent-sdk-python-v0.2.165
+npm run map:generate
+npm run check
+npm run build
+npm run serve
 ```
 
-`labs/*/recorded/` 里是用真实模型录制的运行记录，页面上的分析都由它们离线算出，**构建不需要模型服务，也不需要安装 Claude Code**。
-
-## 自己重做实验
-
-重做录制需要：
-
-- Claude Code **v2.1.296**（课程固定在这个版本；换了版本，行为可能不同——第 6 章就有一例）；
-- 一个兼容 Anthropic Messages 接口的模型服务（课程用的是一个中转服务上的 MiniMax-M3.1-Flash）：
-
-```bash
-export LCC_BASE_URL=https://你的服务地址
-export LCC_API_KEY=...
-export LCC_MODEL=...
-node labs/ch05/record.ts      # 每章的 record*.ts 会覆盖 recorded/ 下的记录
-```
-
-实验完全隔离：`CLAUDE_CONFIG_DIR` 指向临时目录（不读也不写你的 `~/.claude`），子进程只带模型服务的变量，所有项目文件都在临时目录里。
+可分别用 `CC_SOURCE_DIR`、`MOX_SRC`、`PI_SRC`、`SRT_SRC`、`SDKPY_SRC` 指定本地路径。还原文件并不是完整可重新构建的开发仓库，本课程不安装或执行其中的 CLI。
 
 ## 目录
 
 | 路径 | 内容 |
 | --- | --- |
-| `course/` | 课程正文（Markdown）与目录 `syllabus.ts` |
-| `lab/` | 实验台：`cc.ts`（隔离地运行 Claude Code、保存记录）、`proxy.ts`（记录代理）、`derive.ts`（把请求变成结构摘要）、`hook-logger.mjs`（钩子记录器） |
-| `labs/chNN/` | 每章的实验：`record*.ts` 录制（需要模型服务），其余脚本做离线分析；第 8、12 章各有一个“窃听器”（`mcp-tap.mjs`、`cli-tap.mjs`） |
-| `site/` | 网站生成器：`@lab` 在构建时运行分析脚本，`@code`、`@mox`、`@pi`、`@oss` 从源码里摘录（Pi 固定在 v1.5.0，Anthropic 的开源组件见 `course/syllabus.ts` 的 `OSS`） |
-| `assets/` | Mox 插画与角色设定 |
+| `course/` | 以 2.1.88 源码为主的正文、目录和证据定位点 |
+| `observations/` | 2.1.296 的独立实验正文，网页以折叠区显示 |
+| `lab/`、`labs/` | 原实验台与录制分析；`sourcemap.ts` 校验源码来源 |
+| `engineering/` | 一份导图数据与可编辑 `.canvas` |
+| `docs/` | Mermaid 工程地图与解读方法 |
+| `site/` | 阅读站、源码索引、面试题库和可缩放工程地图 |
 
-## 关于录制内容
+## 重做原实验
 
-请求里有 Anthropic 写的系统提示和工具描述。录制**只保存结构**：分几块、多长、有哪些小节、内容的指纹（用来比较两次请求是否相同）、金丝雀字符串出现的位置；正文最多保留一行。会话文件里夹带的系统提示快照、内置子 Agent 和 Skill 的说明同样只留长度和名字。临时路径、家目录、用户名、沙箱代理的一次性凭据都被替换掉了。
+需要 Claude Code 2.1.296 与兼容 Anthropic Messages 的模型服务。设置 `LCC_BASE_URL`、`LCC_API_KEY`、`LCC_MODEL` 后运行相应 `labs/chNN/record*.ts`。录制会产生费用；构建不会运行这些脚本。实验隔离配置，记录只保留研究所需结构，不保存密钥和长段系统提示原文。
+
+## 原始图标
+
+左上角及 favicon 使用 Anthropic 官方 Claude Code VS Code 扩展图标；来源和文件哈希记录于 `site/static/brand-source.json`。此仓库是个人工程解读项目。

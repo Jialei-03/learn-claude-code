@@ -15,7 +15,7 @@ if (part === 'where') {
   console.log(`| 文件 | ${reqs.map((_: any, i: number) => `第 ${i + 1} 个请求`).join(' | ')} |`);
   console.log(`| --- | ${reqs.map(() => '---').join(' | ')} |`);
   for (const [canary, label] of files) {
-    console.log(`| ${label} | ${reqs.map((q: any) => (q.markers?.[canary] ?? []).join('、') || '—').join(' | ')} |`);
+    console.log(`| ${label} | ${reqs.map((q: any) => (q.markers?.[canary] ?? []).map((location: string) => '`' + location + '`').join('、') || '—').join(' | ')} |`);
   }
   const first = reqs[0].messages[0].blocks[0];
   console.log(`\n第一条用户消息的第一个内容块：${first.chars} 个字符，以 ${first.firstLine} 开头。`);

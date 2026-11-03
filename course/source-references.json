@@ -1,0 +1,212 @@
+{
+  "bootstrap": {
+    "chapter": "00-method",
+    "file": "restored-src/src/entrypoints/cli.tsx",
+    "anchor": "async function main(): Promise<void>",
+    "span": 60,
+    "claim": "启动器为版本查询使用快速分支，其余路径再加载模块。"
+  },
+  "query": {
+    "chapter": "01-one-run",
+    "file": "restored-src/src/query.ts",
+    "anchor": "export async function* query(",
+    "span": 24,
+    "claim": "外层 query 委托 queryLoop，正常返回后才标记已消费命令完成。"
+  },
+  "query-state": {
+    "chapter": "01-one-run",
+    "file": "restored-src/src/query.ts",
+    "anchor": "async function* queryLoop(",
+    "span": 100,
+    "claim": "每次查询有明确跨迭代 State，配置快照与可变消息状态分开。"
+  },
+  "system-prompt": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/systemPrompt.ts",
+    "anchor": "export function buildEffectiveSystemPrompt(",
+    "span": 105,
+    "claim": "system prompt 由 override、Agent、自定义、默认与追加层按分支选择。"
+  },
+  "api-params": {
+    "chapter": "02-request",
+    "file": "restored-src/src/services/api/claude.ts",
+    "anchor": "model: normalizeModelStringForAPI(options.model),",
+    "span": 50,
+    "claim": "最终请求参数同时装入 messages、system、tools，不能只观察用户消息。"
+  },
+  "tool-partition": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/services/tools/toolOrchestration.ts",
+    "anchor": "function partitionToolCalls(",
+    "span": 37,
+    "claim": "只把相邻且输入可解析、声明并发安全的工具组成同一批次。"
+  },
+  "tool-validate": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/services/tools/toolExecution.ts",
+    "anchor": "const parsedInput = tool.inputSchema.safeParse(input)",
+    "span": 105,
+    "claim": "schema 和工具 validateInput 失败可直接生成错误结果。"
+  },
+  "edit-read-state": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/tools/FileEditTool/FileEditTool.ts",
+    "anchor": "const readTimestamp = toolUseContext.readFileState.get(fullFilePath)",
+    "span": 70,
+    "claim": "Edit 检查完整读取状态、修改时间、内容匹配与替换歧义。"
+  },
+  "memory-include": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "export async function processMemoryFile(",
+    "span": 78,
+    "claim": "说明文件读取进行去重、深度和外部 include 控制。"
+  },
+  "memory-inject": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "export const getClaudeMds = (",
+    "span": 51,
+    "claim": "不同类型记忆在最终注入时仍可能被过滤或跳过。"
+  },
+  "memory-filter": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "export function filterInjectedMemoryFiles(",
+    "span": 15,
+    "claim": "功能开关可让 AutoMem 和 TeamMem 索引不进入 system prompt。"
+  },
+  "compact-threshold": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/autoCompact.ts",
+    "anchor": "export function getAutoCompactThreshold(",
+    "span": 23,
+    "claim": "自动压缩阈值基于有效窗口扣除 buffer，覆盖值只能向下调整。"
+  },
+  "compact-breaker": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/autoCompact.ts",
+    "anchor": "export async function autoCompactIfNeeded(",
+    "span": 40,
+    "claim": "自动压缩有连续失败断路器，是否压缩与实际摘要是分层操作。"
+  },
+  "compact-rebuild": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/compact.ts",
+    "anchor": "export function buildPostCompactMessages(",
+    "span": 18,
+    "claim": "摘要边界、摘要消息、附件与 hook 结果共同构成压缩后的消息。"
+  },
+  "session-record": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/sessionStorage.ts",
+    "anchor": "export async function recordTranscript(",
+    "span": 43,
+    "claim": "会话转录记录属于持久层，区别于发给模型的消息投影。"
+  },
+  "permission-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export async function checkRuleBasedPermissions(",
+    "span": 102,
+    "claim": "规则检查优先处理 deny、ask、工具特定判断和安全检查。"
+  },
+  "permission-inner": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "async function hasPermissionsToUseToolInner(",
+    "span": 45,
+    "claim": "规则之外仍有模式和其他权限分支，不能把局部 null 当最终允许。"
+  },
+  "hook-match": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "export async function getMatchingHooks(",
+    "span": 60,
+    "claim": "Hook 先依据事件、匹配条件和来源得到候选。"
+  },
+  "hook-pretool": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "export async function* executePreToolHooks<ToolInput>(",
+    "span": 52,
+    "claim": "PreToolUse 创建包含基础字段、工具名称、输入和调用 ID 的输入。"
+  },
+  "mcp-discovery": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "export async function getMcpToolsCommandsAndResources(",
+    "span": 58,
+    "claim": "MCP 连接和工具、命令、资源发现是明确装配步骤。"
+  },
+  "mcp-transform": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "export async function transformResultContent(",
+    "span": 104,
+    "claim": "MCP 结果按 text、audio、image、resource 分类并适配模型。"
+  },
+  "skill-fields": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/skills/loadSkillsDir.ts",
+    "anchor": "export function parseSkillFrontmatterFields(",
+    "span": 83,
+    "claim": "frontmatter 解析不仅取正文，还解析工具、可调用性、fork 与模型等字段。"
+  },
+  "skill-tool": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/SkillTool.ts",
+    "anchor": "export const SkillTool: Tool<InputSchema, Output, Progress>",
+    "span": 78,
+    "claim": "Skill 作为工具执行，名称校验和 command lookup 先于实际展开。"
+  },
+  "agent-run": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/runAgent.ts",
+    "anchor": "export async function* runAgent({",
+    "span": 100,
+    "claim": "子 Agent 有独立定义、上下文、工具池、模型、query source 与取消覆盖。"
+  },
+  "agent-schema": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/AgentTool.tsx",
+    "anchor": "const baseInputSchema = lazySchema(",
+    "span": 28,
+    "claim": "前后台、模型、Agent 类型与隔离参数受 schema 和功能开关约束。"
+  },
+  "sandbox-config": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "export function convertToSandboxRuntimeConfig(",
+    "span": 100,
+    "claim": "将产品设置中的网络和文件规则翻译成 sandbox runtime 配置。"
+  },
+  "sandbox-wrap": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "async function wrapWithSandbox(",
+    "span": 26,
+    "claim": "真正执行命令时才委托 sandbox 包装，区别于权限字符串匹配。"
+  },
+  "headless": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/cli/print.ts",
+    "anchor": "export async function runHeadless(",
+    "span": 62,
+    "claim": "print 入口协调无界面运行的输入、输出与生命周期。"
+  },
+  "structured-io": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/cli/print.ts",
+    "anchor": "function getStructuredIO(",
+    "span": 40,
+    "claim": "字符串输入先转为 SDKUserMessage 流，再选择本地或远程 StructuredIO。"
+  },
+  "sdk-stub": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/entrypoints/agentSdkTypes.ts",
+    "anchor": "export function query(): Query",
+    "span": 10,
+    "claim": "此还原文件的 SDK query 是占位实现，不能当作完整 SDK 执行器。"
+  }
+}

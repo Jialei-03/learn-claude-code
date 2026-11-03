@@ -20,8 +20,14 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 import { createHighlighter } from 'shiki';
-import { CC, OSS, PI, chapters, parts, type OssName } from '../course/syllabus.ts';
+import { CC, CC_SOURCE, OSS, PI, chapters, parts, type OssName } from '../course/syllabus.ts';
 import { layout, homePage, interviewPage, moxMark, sourceIndexPage, type PageMeta } from './templates.ts';
+
+import { verifySourcemap } from '../lab/sourcemap.ts';
+
+const SOURCE_REFERENCES = verifySourcemap();
+
+import { engineeringMap } from '../scripts/engineering-map.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'site/dist');
@@ -216,6 +222,21 @@ ${body}
 }
 
 /** 原样展示一个文本文件（比如录制下来的真实运行记录），不加行号。 */
+function renderSourceReference(key: string, where: { slug: string; title: string }) {
+  const ref = SOURCE_REFERENCES[key];
+  if (!ref) { errors.push(`${where.slug}: 未知 sourcemap 证据 ${key}`); return ''; }
+  citations.push({ source: 'claude-code-sourcemap', chapter: where.slug, title: where.title, file: ref.file, start: ref.start, end: ref.end, url: ref.url });
+  return `<aside class="source-evidence"><p><strong>源码依据 · Claude Code ${CC_SOURCE.version}</strong> <span>sourcesContent 已逐字核对</span></p><a href="${ref.url}" target="_blank" rel="noopener"><code>${esc(ref.file)}</code> · L${ref.start}–L${ref.end}</a><p>${esc(ref.claim)}</p></aside>`;
+}
+
+function renderObservation(slug: string, where: { slug: string; title: string }) {
+  if (slug !== where.slug) { errors.push(`观察版本章节不匹配 ${slug}`); return ''; }
+  const { body } = parseFrontmatter(readFileSync(join(ROOT, 'observations', `${slug}.md`), 'utf8'));
+  const marked = body.replace(/^::: interview /gm, '::: interview （观察 2.1.296）');
+  const html = renderMarkdown(preprocess(marked, where), []);
+  return `<details class="observation-archive"><summary>独立实验对照 · Claude Code ${CC.version}（展开）</summary><div class="observation-notice">以下是另一版本的录制与分析，用来比较变化；不作为 ${CC_SOURCE.version} 的运行证明。</div>${html}</details>`;
+}
+
 function renderInclude(file: string, where: string) {
   const path = join(ROOT, file);
   if (!existsSync(path)) { errors.push(`${where}: 找不到 ${file}`); return ''; }
@@ -249,7 +270,7 @@ function renderFigure(args: string, where: string) {
   return `<figure class="figure"><a href="../${src}" target="_blank" rel="noopener"><picture>${webp}<img src="../${src}" alt="${esc(caption)}" loading="lazy"></picture></a>${caption ? `<figcaption>${esc(caption)}</figcaption>` : ''}</figure>`;
 }
 const HAS_CWEBP = (() => { try { execFileSync('cwebp', ['-version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
-const usedAssets = new Set<string>(['assets/mox-illustrations/mox-blackbox-lab.png']);
+const usedAssets = new Set<string>();
 
 
 // ── Markdown ───────────────────────────────────────────────────────
@@ -322,10 +343,12 @@ function preprocess(source: string, where: { slug: string; title: string }) {
       continue;
     }
 
-    const directive = line.match(/^@(pi|code|mox|oss|lab|trace|figure|include)\s+(.+)$/);
+    const directive = line.match(/^@(pi|code|mox|oss|lab|trace|figure|include|ccsrc|observation)\s+(.+)$/);
     if (directive) {
       const [, kind, args] = directive;
-      const html = kind === 'include' ? renderInclude(args.trim(), where.slug)
+      const html = kind === 'ccsrc' ? renderSourceReference(args.trim(), where)
+        : kind === 'observation' ? renderObservation(args.trim(), where)
+        : kind === 'include' ? renderInclude(args.trim(), where.slug)
         : kind === 'pi' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
         : kind === 'lab' ? renderLab(args, where.slug)
         : kind === 'trace' ? renderTrace(args, where.slug)
@@ -392,6 +415,7 @@ for (const chapter of chapters.filter(c => c.status === 'ready')) {
   }
   const { data, body } = parseFrontmatter(readFileSync(path, 'utf8'));
   const where = { slug: chapter.slug, title: chapter.title };
+  if ((body.match(/^@ccsrc /gm) ?? []).length < 2) errors.push(`${chapter.slug}: 每章至少需要两处源码依据`);
   const headings: Heading[] = [];
   const html = renderMarkdown(preprocess(body, where), headings);
   // 站内链接：course/xx.md → xx.html
@@ -424,6 +448,8 @@ for (const page of pages) {
   }
 }
 
+const MAP = engineeringMap(ROOT);
+pages.push({ file: 'map.html', html: MAP.html });
 pages.push({ file: 'index.html', html: homePage() });
 pages.push({ file: 'interview.html', html: interviewPage(interviews) });
 pages.push({ file: 'sources.html', html: sourceIndexPage(citations) });
@@ -433,7 +459,7 @@ if (errors.length) {
   process.exit(1);
 }
 if (CHECK_ONLY) {
-  console.log(`检查通过：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处 Anthropic 开源组件摘录，${interviews.length} 道面试题`);
+  console.log(`检查通过：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处源码引用（含还原源码索引），${interviews.length} 道面试题`);
   process.exit(0);
 }
 
@@ -455,5 +481,9 @@ for (const asset of usedAssets) {
     cpSync(cached, join(OUT, asset.replace(/\.png$/, '.webp')));
   }
 }
+mkdirSync(join(OUT, 'engineering'), { recursive: true });
+writeFileSync(join(OUT, 'engineering/architecture.canvas'), MAP.canvas);
+writeFileSync(join(OUT, 'engineering/engineering-map.md'), MAP.markdown);
 writeFileSync(join(OUT, 'static/search.json'), JSON.stringify(searchIndex));
-console.log(`已生成 ${relative(ROOT, OUT)}：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处 Anthropic 开源组件摘录，${interviews.length} 道面试题`);
+writeFileSync(join(OUT, 'source-evidence.json'), JSON.stringify({ source: CC_SOURCE, observationVersion: CC.version, references: SOURCE_REFERENCES }, null, 2));
+console.log(`已生成 ${relative(ROOT, OUT)}：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处源码引用（含还原源码索引），${interviews.length} 道面试题`);

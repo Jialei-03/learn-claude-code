@@ -438,3 +438,15 @@ figure:hover .copy, .copy:focus-visible, .copy.done { opacity: 1; }
   .lab-md td:first-child, .lab-md th:first-child { min-width: 0; }
 }
 .src-badge.oss { color: var(--accent-ink); }
+
+.product-icon { display: block; flex: none; width: 30px; height: 30px; object-fit: contain; }
+.source-evidence { margin: 1.4em 0; padding: 18px 20px; border-left: 2px solid var(--accent); background: var(--bg-soft); border-radius: 0 8px 8px 0; font-size: 14px; overflow-wrap: anywhere; }
+.source-evidence p { margin: 0 0 8px; }
+.source-evidence p:last-child { margin: 10px 0 0; }
+.source-evidence span { color: var(--muted); font-size: 12px; }
+.observation-archive { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); }
+.observation-archive > summary { cursor: pointer; font-weight: 650; font-size: 18px; }
+.observation-notice { margin: 22px 0; padding: 14px 18px; background: var(--bg-soft); border-radius: 8px; font-size: 14px; color: var(--muted); }
+.source-hero { padding: 28px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-soft); }
+.source-hero p { margin: 0; font: 12px/1.8 var(--mono); color: var(--muted); }
+.source-hero pre { margin: 24px 0; font: 15px/1.9 var(--mono); color: var(--ink-2); white-space: pre-wrap; }
