@@ -9,7 +9,7 @@ import { SOURCE_DIR, verifySourcemap } from '../../lab/sourcemap.ts';
 import { CC_SOURCE } from '../../course/syllabus.ts';
 
 const references = verifySourcemap();
-function upstream(key, name, ports = {}) {
+export function upstream(key, name, ports = {}) {
   const ref = references[key];
   const text = execFileSync('git', ['-C', SOURCE_DIR, 'show', `${CC_SOURCE.commit}:${ref.file}`], { encoding: 'utf8', maxBuffer: 4e6 });
   const start = text.indexOf(ref.anchor);
@@ -142,7 +142,7 @@ const cases = {
   },
 };
 
-const names = process.argv[2] ? [process.argv[2]] : Object.keys(cases);
+const names = new URL(import.meta.url).pathname === process.argv[1] ? (process.argv[2] ? [process.argv[2]] : Object.keys(cases)) : [];
 for (const name of names) {
   if (!Object.hasOwn(cases, name)) throw Error(`Unknown lab: ${name}`);
   console.log(JSON.stringify({ lab: name, version: CC_SOURCE.version, commit: CC_SOURCE.commit, evidence: 'extracted upstream function + explicit isolated test ports', ...await cases[name]() }, null, 2));

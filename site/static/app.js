@@ -133,7 +133,7 @@ for (const el of $$('.trace-player')) {
     stage.innerHTML = `<div class="tp-explain">${step.explain}</div>
       ${step.kind === 'request' ? `<div class="tp-meter">本次请求发送 ${step.messages.length} 条消息 · 约 ${chars.toLocaleString()} 字符<div class="tp-bar"><span style="width:${(chars / maxChars) * 100}%"></span></div></div>` : ''}
       <div class="tp-msgs">${step.messages.map((m, j) => msgHtml(m, fresh.has(j))).join('')}</div>
-      ${step.wire ? `<details class="tp-wire"><summary>查看真实发送的请求体（${escapeHtml(step.wireLabel ?? 'JSON')}）</summary><pre>${escapeHtml(JSON.stringify(step.wire, null, 2))}</pre></details>` : ''}`;
+      ${step.wire ? `<details class="tp-wire"><summary>${escapeHtml(step.wireSummary ?? `查看真实发送的请求体（${step.wireLabel ?? 'JSON'}）`)}</summary><pre>${escapeHtml(JSON.stringify(step.wire, null, 2))}</pre></details>` : ''}`;
     $$('.tp-steps li', el).forEach((li, j) => { li.classList.toggle('active', j === at); li.classList.toggle('done', j < at); });
     $('[data-act="prev"]', el).disabled = at === 0;
     $('[data-act="next"]', el).disabled = at === data.steps.length - 1;

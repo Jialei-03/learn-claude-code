@@ -1,42 +1,43 @@
 ---
-motto: 界面退出之后，输入、确认、取消与事件仍需要协议承接。
-prereq: 第 1、6、8、10 章
-time: 55 分钟
+motto: 前面从函数调用驱动 Agent，本章让脚本通过 JSONL 驱动相同实现，并处理未完成确认和输入结束。
 learn:
-  - 追踪结构化 IO 和 SDK 执行入口
-  - 验证输入归一化与占位入口
-build: 验证输入归一化与占位入口
+  - 从固定源码逐段解释本章决策与失败路径
+  - 用真实子进程承接 Agent 的控制面
+  - 运行错误反例与回归，解释实际文件、状态或进程结果
+prereq: 第 11 章的实现与实验
+time: 60 分钟
+build: 用真实子进程承接 Agent 的控制面
 ---
 
-## 无界面运行仍有完整生命周期
+## 本章的问题
+
+把 stdout 拼成最终文本，只解决内容输出。一个无界面 Agent 还需要接受取消、关联权限答复、处理 EOF、报告终态并退出进程。任何一个 pending Promise 没结算，都可能让客户端一直等着。
+
+coda 的 ControlIO 以 request id 管确认。不存在的答复不能解开等待；输入关闭时明确拒绝未回答请求。CLI 的 stdout 只放 JSON 帧，调试信息不能随意混入协议。
+
+## 沿固定源码逐段拆解
 
 @ccsrc headless
 
-`runHeadless` 协调输入、选项、输出与执行。没有 TUI 并不意味着只是发送一次模型请求：权限回应、工具、会话恢复和控制请求仍可能在运行中发生。调用者还依赖明确的结束状态与错误传播。
+### runHeadless 是生命周期入口
+
+参数不止 prompt：恢复选项、输出格式、权限、工具、Agent 定义、预算和模型都参与装配。无界面运行仍然消费共享查询逻辑，不能把它理解成绕过工具与权限的一次 API 调用。
 
 @ccsrc structured-io
 
-`getStructuredIO` 把普通字符串输入规范化为带 user message 形状的流；已有异步输入则保留流形式。随后依据 sdkUrl 选择本地 StructuredIO 或 RemoteIO。相同的业务输入经过不同传输，需要保持协议语义一致。
+### getStructuredIO 把多种输入归一化
 
-## 还原文件里也存在 SDK 占位实现
+非空字符串变成 SDKUserMessage 流，空白字符串变空流，已有异步输入则继续使用。sdkUrl 决定本地 StructuredIO 或 RemoteIO 构造器。归一化以后，后面的消费路径不需要不断判断最初来自哪种输入。
 
 @ccsrc sdk-stub
 
-这是一个必须按源码说话的例子：`entrypoints/agentSdkTypes.ts` 中的 query 有类型重载，但函数体是未实现占位。不能因为函数名叫 query，就把它解释为实际启动进程或发送请求的 SDK 实现。
+### 再回看类型占位入口
 
-需要沿真实打包入口、已发布 SDK 或其他授权开源实现查执行逻辑。课程保留 Python Agent SDK 的开源源码对照；它解释跨进程控制的一种实际实现，但版本对应关系必须单独标明。
+第 0 章的反例现在有了具体替代路径：真实执行位于入口、IO、查询与进程管理之间，而不是那个直接抛错的导出。公开 SDK 组件可用于进一步研究传输，但版本和实现证据仍要独立标注。
 
-## 数据流与控制流要分开理解
+coda CLI 提供有限的单任务 JSONL 教学协议，不声称兼容产品 SDK 的全部消息格式。
 
-流出的 assistant 或 tool event 是结果数据；权限回应、取消和 Hook 回调是控制交互。只有 stdout 上出现 JSON，不能证明双向控制已经正确工作。需要检查请求身份、回应匹配、进程退出和超时之后的资源清理。
-
-一个端到端回归可以使用 fake CLI 或本地合成协议流，不必每次调用收费模型；但这种测试只证明协议与生命周期，不证明供应商兼容或模型质量。
-
-## 无界面模式仍然需要一个控制面
-
-交互界面可以展示权限问题、接收取消、渲染进度。去掉 TUI 后，这些职责没有消失，只是需要通过结构化 IO 或 SDK 回调表达。把 stdout 拼成最终文本，只解决了内容输出，不能正确控制整个任务。
-
-`runHeadless` 接收恢复选项、输出格式、工具和 Agent 定义、权限相关参数以及预算。它是应用生命周期入口；`getStructuredIO` 则把不同输入统一成消息流。两者不该被读成“直接调用一次模型”。
+## 机制总览
 
 ```mermaid
 flowchart TD
@@ -50,26 +51,38 @@ flowchart TD
   H --> Q[共享查询与工具执行]
 ```
 
-@lab node --disable-warning=ExperimentalWarning labs/engineering/run.mjs io
+## 接入贯穿项目
 
-这个实验执行原始归一化函数，用测试构造器接住参数。普通字符串成为带 session_id、message 和 parent_tool_use_id 的 user 消息；空白字符串成为空流；sdkUrl 切换构造器。测试不发网络，也不启动子进程，输出中的 remote 只证明分支选择。
+@implementation 12-headless-sdk
 
-## 类型入口为什么会骗过读者
+### 逐步跟踪本章实现
 
-@lab node --disable-warning=ExperimentalWarning labs/engineering/run.mjs sdk
+ControlIO 把每次确认分配为新的 permission id，并把等待者放进 pending。reply 只能按同一个 id 取出并完成一次等待；未知或过期回答返回 false。业务工具 id 与控制请求 id 分开，客户端才不会把一条确认错配到另一个调用。
 
-函数确实抛出 not implemented。看到它不应该得出“SDK 无法使用”，而应该改进阅读路径：这个文件服务于什么构建？真实 npm 包怎样导出执行器？哪个公开 SDK 实现启动并管理 CLI？产品功能、类型声明入口和实际执行入口是三件事。
+输入 EOF 的意义是再也收不到确认答案，因此 close 要拒绝所有 pending 并清理监听，不能让 agent 永久等待。取消同样移除该请求的等待者。normalizeInput 只处理输入形状，CLI 则负责逐行解析、路由 user 与 permission_response，以及把输出继续写成 JSONL。
 
-后半部分保留的公开 Python SDK 源码为这个问题提供另一条可读路径，那里可以继续研究进程传输和控制协议。它也有自己的固定版本，不能替代 2.1.88 内部所有实现的证据。
+本章既直接测试控制对象，也真实 spawn CLI，通过管道写入、结束 stdin 并等待退出码。前者定位协议状态，后者验证装配和进程收尾。Python SDK 的固定源码仍是独立对照；教学 Node 协议不是对官方 SDK 全部方法的兼容实现。
 
-## 把工具确认做成协议，需要哪些约束
+## 运行本章实验
 
-SDK 客户端收到确认请求后，需要关联 request id，返回相应答复；服务端等待期间仍要能处理取消、输入结束和子进程退出。若调用方不消费事件，输出缓冲可能填满，甚至让工作阻塞。因此“收到最后一条 result”与“子进程已经退出”也要分别处理。
+```bash
+node --disable-warning=ExperimentalWarning labs/chapters/12-headless-sdk.mjs
+```
 
-练习定义一个最小客户端的状态：starting、running、waiting_permission、cancelling、closed。为输出 EOF、无回应确认、取消后迟到答复各写一个期望行为。不要先追求完整 UI；先用合成协议输入验证不会悬挂，再用真实 CLI 验证集成。
+@experiment 12-headless-sdk
 
-::: interview 阅读 SDK 源码时，怎样避免把声明文件误当实现？
-检查函数体、实际包 exports、构建入口和调用路径。类型签名说明契约，实际实现可能位于其他文件或发布工序中；若当前函数只抛未实现错误，就应明确说明材料的边界，再用真实实现或运行证据补足。
+## 逐项解释实验结果
+
+实验先在进程内核对确认 id、输入关闭与归一化，再启动真实 coda CLI 子进程。它必须输出可解析 JSON、完成终态、写入 Session，并以 0 退出。检查了进程退出，才能发现仅看最后一句文字时遗漏的悬挂。
+
+客户端若要保持双向确认，应保持 stdin 打开；EOF 会触发明确的未答复错误，不会自动同意。
+
+## 继续动手与验收
+
+写一个客户端，发送 user 后等待 permission_request，再回相同 id。分别测试错误 id、取消后迟到答复和 EOF；确保没有任何路径会擅自允许写入。
+
+::: interview 无界面权限等待怎样避免悬挂？
+控制请求 id 唯一标识一份等待中的确认；回答只消费对应 pending 一次。EOF 和取消都必须使等待结束，避免 CLI 永不退出。本章同时测试对象状态和真实子进程管道，覆盖协议与装配两层。
 :::
 
 @observation 12-headless-sdk

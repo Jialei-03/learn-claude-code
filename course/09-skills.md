@@ -1,42 +1,39 @@
 ---
-motto: 把选择能力的描述与执行能力的方法分开装载。
-prereq: 第 2、4、7 章
-time: 40 分钟
+motto: 工具解决能做什么，Skill 提供何时以及怎样做；本章将元数据与正文分开给模型消费。
 learn:
-  - 解释元数据与执行消费者的关系
-  - 设计一个只读代码审阅 Skill
-build: 设计一个只读代码审阅 Skill
+  - 从固定源码逐段解释本章决策与失败路径
+  - 为同一项目加入按名称发现与展开的工作方法
+  - 运行错误反例与回归，解释实际文件、状态或进程结果
+prereq: 第 8 章的实现与实验
+time: 60 分钟
+build: 为同一项目加入按名称发现与展开的工作方法
 ---
 
-## Skill 是被读取、解析并参与运行的能力
+## 本章的问题
+
+把全部团队方法放进系统提示，会让每个请求都携带大量无关内容。Skill 把选择所需的短描述和执行所需的长正文分开。本章先只暴露 name、description；调用 Skill 后再展开正文。
+
+有一个重要区别：发现时可以读取文件以校验元数据，但不等于把正文都放进模型上下文。coda 的 descriptions 明确只返回两项；load 在调用时重新读取具体内容。
+
+## 沿固定源码逐段拆解
 
 @ccsrc skill-fields
 
-`parseSkillFrontmatterFields` 不只提取名称和简介，还解析 allowed tools、用户/模型可调用性、模型、参数提示、Hook、effort、shell 与 fork context。每个字段都可能改变运行方式，所以 Skill 不只是一个长 prompt 文件。
+### parseSkillFrontmatterFields 产生的是配置语义
 
-字段存在也不保证所有分支启用；应继续看 createSkillCommand、加载来源和实际调用者。尤其要检查缺省值与非法值的处理，避免把字符串形式的 false 当成真。
+description 可以来自显式字段或 Markdown 回退；user-invocable 缺省为 true；model=inherit 表示继承；context 仅在 fork 时进入对应枚举。allowed-tools、hooks、argumentNames、agent 和 effort 都由不同解析器处理。
 
-## 模型调用 Skill 仍经过工具入口
+解析函数并没有亲自运行子 Agent，也没有完成工具授权。解释一个字段，必须继续找消费者：谁使用 allowedTools，谁创建 fork，谁决定模型。把配置字段直接描述成隔离保证会跳过最关键的执行证据。
 
 @ccsrc skill-tool
 
-`SkillTool` 校验名称、处理兼容的前导斜杠并在 command registry 中查找。特定远程发现分支受 feature 条件约束。只有找到可用命令后，才能谈正文怎样展开、参数怎样替换或是否在 fork 中执行。
+### SkillTool 从输入名称走到真实命令
 
-运行入口和命令定义分开，让用户调用、模型调用与其他分发方式共享能力描述，但它们的授权条件仍要具体检查。不能因为名称相同就假定所有入口都跳过审批。
+先 trim，处理兼容前导斜杠，再查可用 commands。空名称和未注册名称会得到不同错误；远程 canonical 分支还需要内部 feature 和发现条件。存在一个目录，不表示当前命令集合已经发布它。
 
-## 安装代码解读 Skill，也是一次能力接入
+coda 的 frontmatter 是刻意有限的标量方言，支持逗号工具列表、fork 和可调用性字段，拒绝重复键。它不实现完整 YAML。allowedTools 在工具结果里提供语义信息，不偷偷扩大 gate 权限；真正只读的子任务在下一章收缩工具池。
 
-本工作区已配备 Understand Anything、JSON Canvas 与 Mermaid 图示指南。它们分别帮助组织调用邻域、编辑思维导图和选择图类型。安装文件只意味着方法可用，不能代替读源码和验证图里的每条边。
-
-本课程工程地图采用“主题 → 实现入口”的边，不把概念分类冒充函数 calls。真正的调用关系必须在调用者中找到对应语句；功能开关和未验证分支要单独标识。
-
-## 需要验证的边界
-
-可用的 Skill 实验应分别观察 metadata 发现、正文读取、参数展开、权限变化和最终执行上下文。动态命令或 shell 内容还涉及当前目录与真实进程环境，不能用静态渲染替代执行证据。
-
-## 一份 SKILL.md 是延迟加载的能力描述
-
-把所有工作方法塞进 system prompt，会不断增加请求体。Skill 把“什么时候适用”的短描述与“如何完成”的长正文拆开：发现阶段维护元数据，真正调用时才展开具体方法。这里要读两条线，元数据解析是一条，SkillTool 查找与执行是一条。
+## 机制总览
 
 ```mermaid
 flowchart TD
@@ -47,26 +44,38 @@ flowchart TD
   T --> E[按实际执行路径展开正文]
 ```
 
-## 逐个理解元数据，而不是只看 description
+## 接入贯穿项目
 
-`user-invocable` 没写时默认 true；`disable-model-invocation` 控制另一条可调用性；model=inherit 被解析成 undefined，表达继承而非模型字面量；context 只有等于 fork 才成为 fork 执行上下文。allowed-tools、hooks、agent 和 argumentNames 又分别影响工具许可、生命周期、委派和参数。
+@implementation 09-skills
 
-这些字段并不都在解析函数里完成效果。解析函数只产生结构，必须继续找消费者。例如 parsed.allowedTools 怎样进入调用上下文？fork 由哪条路径启动？没有读消费者便说“写上这个字段就完成隔离”，会把配置语义与执行保证混在一起。
+### 逐步跟踪本章实现
 
-## 一个具体反例：看到了 Skill 名称，却调用失败
+Skills 构造时读取 frontmatter，只在 entries 保存 path、name、description。descriptions 可以把简短目录放进上下文，而正文留到 load 时再读；这把“知道有哪些能力”和“为本次任务加载说明”拆成了两个可观察动作。
 
-SkillTool 会 trim 名称，兼容前导斜杠，再到实际命令集合里查找。空白名称和未注册名称是不同错误。远程实验功能还有单独的 feature gate 与发现条件，不能用该分支解释普通本地 Skill。
+parseSkill 明确限定为标量字段与逗号分隔的 allowed-tools。重复字段、重复名字和缺少必填元数据直接报错，不猜测 YAML 的隐式类型。load 允许去掉一个开头的斜杠，但未知名字仍失败，不让错误悄悄变成空技能。
 
-假设你把目录名改了，描述仍留在旧缓存中。模型可能选择旧名字，工具层却查不到。这时应记录发现集合、注册集合和调用输入，找到两份视图分叉的位置。重写描述未必能解决身份不一致。
+allowedTools 与 fork 在返回值中是元数据。createCoda 的 Skill 工具只返回正文和这些信息，并没有据此自动提高权限或创建子任务；真正缩减工具目录在下一章实现。读者应能指出声明在哪一行被解析、又在哪个执行边界才可能生效。
 
-## 动手：做一个只分析、不修改的 Skill
+## 运行本章实验
 
-以 normalizeSlug 的代码审阅为例：description 写清触发任务，正文要求先读实现和测试，再列出反例与修改建议。先不授予写入能力。分别从手动命令和模型选择两条入口观察是否可达，检查是否按需载入正文。
+```bash
+node --disable-warning=ExperimentalWarning labs/chapters/09-skills.mjs
+```
 
-后半部分实验对照保留了自动选择、手动调用、权限拒绝等录制。你的验收不应是模型“说自己用了 Skill”，而应包含调用事件、实际展开的指令和后续工具行为。若要 fork，还要检查子任务身份与结果回传。
+@experiment 09-skills
 
-::: interview Skill 和普通提示模板的关键区别是什么？
-具体实现可能让 Skill 参与发现、调用权限、工具授权、Hook 和子上下文执行，而模板主要提供文本组合。应依据该版本 loader 与执行入口解释能力，不能仅根据文件后缀或产品名称分类。
+## 逐项解释实验结果
+
+实验比较 descriptions 与 load 的返回结构，检查前导斜杠、未知名称、允许工具和重复键。最终总装会让模型显式调用 verify Skill，并真实执行它要求的回归测试。
+
+读到 Skill 正文不等于任务遵守了它。验收要同时看调用事件、展开内容和后续工具效果。
+
+## 继续动手与验收
+
+增加一个与目录名不同的 name，检查调用使用哪个身份。再在读取后修改正文，说明下一次 load 与已经捕获的描述视图可能怎样分叉，设计版本一致性的修复方案。
+
+::: interview Skill 元数据解析为何不等于执行保证？
+技能目录只提供 name 与 description，调用时才读取正文。allowed-tools 与 context: fork 是需要执行层消费的声明，解析到字段不代表权限已改变或子任务已创建；本课把这条边界明确展示出来。
 :::
 
 @observation 09-skills

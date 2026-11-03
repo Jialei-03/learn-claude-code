@@ -43,45 +43,45 @@ export const parts: PartInfo[] = [
   {
     id: 'p0', title: '开始之前', subtitle: '沿还原源码读懂一个产品级 Agent',
     chapters: [
-      { n: 0, slug: '00-method', title: '方法：源码、版本与证据', summary: '固定 sourcemap 2.1.88 的提交，建立函数与调用链证据；把 2.1.296 实验单独标记。', status: 'ready' },
+      { n: 0, slug: '00-method', title: '证据与入口：先确定要重建什么', summary: '把源码文本、入口可达性、局部执行和端到端结果分开，给后面所有实验提供可追溯的基础。', status: 'ready' },
     ],
   },
   {
     id: 'p1', title: '一次运行', subtitle: '从输入到结束',
     chapters: [
-      { n: 1, slug: '01-one-run', title: '一次运行：启动、主循环与状态', summary: '从 CLI 快速分支追到 queryLoop，区分迭代状态、事件交付和持久记录。', status: 'ready' },
-      { n: 2, slug: '02-request', title: '模型请求：提示合成与 API 参数', summary: '读 system prompt 来源优先级与最终 messages、tools、缓存参数构造。', status: 'ready' },
-      { n: 3, slug: '03-tools', title: '工具：调度、校验与编辑契约', summary: '并发批次如何划分，参数在哪一层被拒绝，Edit 怎样保证先读后改。', status: 'ready' },
+      { n: 1, slug: '01-one-run', title: '主循环：让一次任务正确地结束', summary: '接过第 0 章的证据约束，写出所有后续能力共同使用的 Engine。工具、权限和持久化都通过这里的边界接入。', status: 'ready' },
+      { n: 2, slug: '02-request', title: '请求构造：从提示来源到模型协议', summary: '循环只管什么时候请求；本章增加 request 回调，让提示、历史和工具定义通过同一个边界进入模型。', status: 'ready' },
+      { n: 3, slug: '03-tools', title: '工具执行：并发、校验与文件版本', summary: '上一章让模型知道工具；本章让调用真的产生受控效果，并把失败作为带 id 的结果交回循环。', status: 'ready' },
     ],
   },
   {
     id: 'p2', title: '上下文', subtitle: '记住什么、忘掉什么',
     chapters: [
-      { n: 4, slug: '04-memory', title: 'CLAUDE.md 与记忆注入', summary: '从 include 递归和去重，到类型过滤与最终上下文投影。', status: 'ready' },
-      { n: 5, slug: '05-sessions-compaction', title: '会话、恢复与压缩', summary: '转录存储、窗口阈值、失败断路器和压缩后消息重建。', status: 'ready' },
+      { n: 4, slug: '04-memory', title: '项目指令：发现、递归与最终注入', summary: 'Engine 和文件工具已能工作；本章让它知道这个项目要求什么，并保留每份指令的来源。', status: 'ready' },
+      { n: 5, slug: '05-sessions-compaction', title: '会话与压缩：保留事实，重建视图', summary: '前面消息只存在内存里；本章把它们变成持久事实，同时允许模型使用压缩后的请求副本。', status: 'ready' },
     ],
   },
   {
     id: 'p3', title: '控制与扩展', subtitle: '谁能决定 Agent 做什么',
     chapters: [
-      { n: 6, slug: '06-permissions', title: '权限：规则阶段与最终决策', summary: '追踪 deny、ask、工具专用检查和模式分支，避免把局部结果当最终授权。', status: 'ready' },
-      { n: 7, slug: '07-hooks', title: 'Hooks：匹配、输入与失败边界', summary: '把工具校验顺序、Hook 选择与真实执行阶段连起来。', status: 'ready' },
-      { n: 8, slug: '08-mcp', title: 'MCP：发现、调用与结果适配', summary: '检查配置、连接、工具发现、模型可见性和多模态结果转换。', status: 'ready' },
-      { n: 9, slug: '09-skills', title: 'Skills：metadata 与执行入口', summary: '解析工具权限、模型、fork 等字段，再追 SkillTool 如何查找和展开。', status: 'ready' },
+      { n: 6, slug: '06-permissions', title: '权限：谁有权决定一次效果', summary: '工具先完成参数校验，再把具体调用交给权限 gate；读取、编辑、未知效果和无界面等待各有明确结果。', status: 'ready' },
+      { n: 7, slug: '07-hooks', title: 'Hook：扩展流水线的输入与失败', summary: '第 6 章已经知道谁授权；本章让团队策略在明确阶段参与处理，同时保留权限和工具验证的最终边界。', status: 'ready' },
+      { n: 8, slug: '08-mcp', title: 'MCP：真实连接、发现、调用与退出', summary: '模型循环不关心工具来自哪里；本章把外部工具变成 Toolset 能消费的定义，并承担连接的整个生命周期。', status: 'ready' },
+      { n: 9, slug: '09-skills', title: 'Skill：描述、正文与执行范围', summary: '工具解决能做什么，Skill 提供何时以及怎样做；本章将元数据与正文分开给模型消费。', status: 'ready' },
     ],
   },
   {
     id: 'p4', title: '多 Agent 与长任务', subtitle: '把工作分出去，让它一直做下去',
     chapters: [
-      { n: 10, slug: '10-subagents', title: '子 Agent：上下文与生命周期', summary: '读子任务 schema、工具池、模型选择、前后台和取消边界。', status: 'ready' },
-      { n: 11, slug: '11-sandbox', title: '沙箱：配置适配与命令包装', summary: '从产品权限规则到 sandbox runtime 参数，分清配置与系统执行证据。', status: 'ready' },
+      { n: 10, slug: '10-subagents', title: '子 Agent：缩小工具池并独立记账', summary: '用前面相同的 Engine 与 Toolset 创建子任务，明确它继承什么、隔离什么，以及取消从哪条信号链传递。', status: 'ready' },
+      { n: 11, slug: '11-sandbox', title: '沙箱：把规则落到真实进程', summary: '权限决定是否接受调用，本章另做平台配置与系统探针，验证允许和禁止的效果是否真实发生。', status: 'ready' },
     ],
   },
   {
     id: 'p5', title: '工程化', subtitle: '把 Claude Code 当部件用',
     chapters: [
-      { n: 12, slug: '12-headless-sdk', title: '无界面与 SDK：协议和实现边界', summary: '读 Headless 与 StructuredIO，并识别 SDK 类型入口中的占位实现。', status: 'ready' },
-      { n: 13, slug: '13-synthesis', title: '总结：源码地图与工程面试', summary: '对照三项目的源码版本、验证范围和架构取舍，用一个反例讲清机制。', status: 'ready' },
+      { n: 12, slug: '12-headless-sdk', title: '无界面运行：输入、确认与 EOF', summary: '前面从函数调用驱动 Agent，本章让脚本通过 JSONL 驱动相同实现，并处理未完成确认和输入结束。', status: 'ready' },
+      { n: 13, slug: '13-synthesis', title: '总装：修复一个真正失败的项目', summary: '复用所有前章接口，以真实项目、真实测试和真实 MCP 连接验收完整任务，最后重开会话检查恢复。', status: 'ready' },
     ],
   },
 ];

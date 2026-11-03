@@ -35,6 +35,7 @@ function topbar(base: string) {
   <a class="brand" href="${base}index.html"><img class="product-icon" src="${base}static/product-icon.png" width="30" height="30" alt="Claude Code 原始图标"><span class="brand-name">Learn Claude Code</span></a>
   <div class="topbar-actions">
     <button class="search-btn" type="button" data-search-open><svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>搜索课程</span><kbd>⌘K</kbd></button>
+    <a class="top-link" href="${base}workshop.html">实现主线</a>
     <a class="top-link" href="${base}interview.html">面试题库</a>
     <a class="top-link" href="${base}sources.html">源码索引</a>
     <a class="top-link" href="${base}map.html">工程地图</a>
@@ -133,10 +134,10 @@ export function homePage() {
   <div class="hero-copy">
     <p class="eyebrow">Agent 工程课 · 第二部<span>·</span>源码 Claude Code ${CC_SOURCE.version}</p>
     <h1>拆开 Claude Code<br><span class="hero-sub">沿源码，读懂工程取舍</span></h1>
-    <p class="hero-lead">以指定的 2.1.88 sourcemap 还原源码为主线，沿入口、状态和失败路径解释机制。每章定位到固定提交的函数与行号，再把 2.1.296 的实验观察单独对照。</p>
+    <p class="hero-lead">沿固定源码逐段拆解工程机制，十四步做出自己的 coda。每章接入真实代码与独立实验，最后修复项目、运行测试并重开会话。</p>
     <div class="hero-actions">
       <a class="btn primary" href="chapters/00-method.html">开始学习</a>
-      <a class="btn-link" href="chapters/01-one-run.html">先看一次运行的全貌 →</a>
+      <a class="btn-link" href="workshop.html">查看完整实现主线 →</a>
     </div>
   </div>
   <aside class="source-hero"><p>SOURCE READING · ${CC_SOURCE.version}</p><pre>CLI bootstrap
@@ -151,7 +152,7 @@ session · hooks · permissions</pre><p><a href="map.html">打开工程思维导
 <section class="pillars">
   <article><span class="pillar-num">01</span><h3>以源码为主线</h3><p>固定提交、函数与行号；还原文件逐字核对 sourcesContent。</p></article>
   <article><span class="pillar-num">02</span><h3>分清证据版本</h3><p>2.1.88 源码与 2.1.296 录制分区阅读，避免混淆实现和观察。</p></article>
-  <article><span class="pillar-num">03</span><h3>三方对照</h3><p>同一个机制，Claude Code、Pi、mox 各怎么做，取舍在哪里。</p></article>
+  <article><span class="pillar-num">03</span><h3>逐章实现 coda</h3><p>14 份独立实验贯穿同一项目，真实读写文件、启动进程与 MCP。</p></article>
   <article><span class="pillar-num">04</span><h3>讲得出取舍</h3><p>每章附面试题和回答要点，汇总在<a href="interview.html">面试题库</a>。</p></article>
 </section>
 
@@ -159,8 +160,10 @@ session · hooks · permissions</pre><p><a href="map.html">打开工程思维导
   <h2>先修课</h2>
   <p>这门课假设你学过（或者手边有）<a href="https://github.com/Jialei-03/learn-pi-agent">Learn Pi Agent</a>：Agent 循环、工具、上下文、会话这些概念那里有从零的实现。先准备指定还原源码，再读每章调用链。各章后半部完整展示 2.1.296 的独立实验与录制，源码主线和实验版本分区说明。构建运行局部函数与离线分析，不启动模型服务。</p>
   <pre><code>git clone ${REPO}.git
-cd learn-claude-code &amp;&amp; npm install
+cd learn-claude-code &amp;&amp; npm ci
 npm run setup:source
+npm run setup:study
+npm run verify:course
 npm run build &amp;&amp; npm run serve</code></pre>
 </section>
 
@@ -201,4 +204,8 @@ export function sourceIndexPage(citations: { source: string; chapter: string; ti
   };
   const main = `<article class="chapter plain-page"><header class="chapter-head"><p class="eyebrow">汇总</p><h1>源码索引</h1><p class="lede">课程的主线是用户指定的 Claude Code 2.1.88 sourcemap 还原材料；开源组件与 Pi 是独立版本的对照。所有源码定位指向固定提交，主线文件还与 source map 的 sourcesContent 逐字核对。该还原材料不代表官方开源仓库。</p></header><div class="prose">${sources.map(section).join('')}</div></article>`;
   return head('源码索引 · Learn Claude Code', '课程摘录过的开源代码', '') + shell('', undefined, main);
+}
+
+export function workshopPage(content: string) {
+  return head('coda 实现主线 · Learn Claude Code', '十四章共同搭建一个可运行的 Coding Agent', '') + shell('', undefined, `<article class="chapter plain-page"><h1>coda：贯穿全课的实现主线</h1><div class="prose">${content}</div></article>`);
 }

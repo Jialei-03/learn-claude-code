@@ -1,0 +1,290 @@
+{
+  "bootstrap": [
+    {
+      "find": "const args =",
+      "note": "先只取本次命令参数，避免把启动脚本自身当作用户意图。"
+    },
+    {
+      "find": "args.length === 1",
+      "note": "版本快路径要求它是唯一参数；命中后提前返回，后续模块不加载。"
+    }
+  ],
+  "query": [
+    {
+      "find": "const consumedCommandUuids",
+      "note": "本次查询拥有被消费命令的身份列表，不由全局完成状态代替。"
+    },
+    {
+      "find": "notifyCommandLifecycle(uuid, 'completed')",
+      "note": "完成通知位于 yield* 正常返回后，异常与提前关闭不会执行此处。"
+    }
+  ],
+  "query-state": [
+    {
+      "find": "let state: State",
+      "note": "跨迭代材料集中在 State，每个 continue 必须明确更新其字段。"
+    },
+    {
+      "find": "const config = buildQueryConfig()",
+      "note": "入口配置快照与循环内变化分开；读恢复路径时核对哪些条件会重新读取。"
+    }
+  ],
+  "system-prompt": [
+    {
+      "find": "if (overrideSystemPrompt)",
+      "note": "最高优先级提前返回，append 因而不是无条件存在。"
+    },
+    {
+      "find": "agentSystemPrompt",
+      "note": "Agent 提示是否存在决定普通分支的底座；特殊模式另走 gate。"
+    }
+  ],
+  "api-params": [
+    {
+      "find": "messages: addCacheBreakpoints",
+      "note": "到 wire 之前仍在投影历史，磁盘转录不是原样请求体。"
+    },
+    {
+      "find": "max_tokens: maxOutputTokens",
+      "note": "输出预算和 thinking 同属最终请求契约，不能只统计输入文字。"
+    }
+  ],
+  "tool-partition": [
+    {
+      "find": "const parsedInput",
+      "note": "只有可解析输入才有资格判断并发安全。"
+    },
+    {
+      "find": "acc[acc.length - 1]!.blocks.push",
+      "note": "只追加到相邻的安全批次，不跨顺序屏障搬移调用。"
+    }
+  ],
+  "tool-validate": [
+    {
+      "find": "if (!parsedInput.success)",
+      "note": "形状错误在执行前转成模型可消费的错误结果。"
+    },
+    {
+      "find": "const isValidCall =",
+      "note": "工具语义校验与 schema 校验分层，失败可能根本到不了 Hook。"
+    }
+  ],
+  "edit-read-state": [
+    {
+      "find": "if (!readTimestamp",
+      "note": "未读或部分视图不能支撑这个版本的编辑契约。"
+    },
+    {
+      "find": "const matches =",
+      "note": "存在与唯一性是两道检查；多个匹配需要明确意图。"
+    }
+  ],
+  "memory-include": [
+    {
+      "find": "processedPaths.has",
+      "note": "去重与深度上限分开约束循环和无限新文件链。"
+    },
+    {
+      "find": "isExternal && !includeExternal",
+      "note": "外部 include 是独立范围决策，不能由深度限制代替。"
+    }
+  ],
+  "memory-inject": [
+    {
+      "find": "if (filter &&",
+      "note": "发现成功之后仍可按类型过滤，本次注入不是磁盘全集。"
+    },
+    {
+      "find": "const description =",
+      "note": "来源描述与内容一起进入请求，便于审计指令归属。"
+    }
+  ],
+  "memory-filter": [
+    {
+      "find": "if (!skipMemoryIndex)",
+      "note": "功能开关关闭时保留原集合，不能从一次过滤推断功能不存在。"
+    },
+    {
+      "find": "f.type !== 'AutoMem'",
+      "note": "开关开启后移除两类索引；这是请求视图变化，不是删除文件。"
+    }
+  ],
+  "compact-threshold": [
+    {
+      "find": "effectiveContextWindow -",
+      "note": "默认触发点先给窗口预留缓冲。"
+    },
+    {
+      "find": "Math.min(percentageThreshold",
+      "note": "测试覆盖只能降低阈值，100% 也不能抹去缓冲。"
+    }
+  ],
+  "compact-breaker": [
+    {
+      "find": "MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES",
+      "note": "连续失败到上限后停止重复摘要请求，避免恢复本身持续花费。"
+    },
+    {
+      "find": "const shouldCompact =",
+      "note": "是否需要压缩与实际摘要执行是不同阶段。"
+    }
+  ],
+  "compact-rebuild": [
+    {
+      "find": "result.boundaryMarker",
+      "note": "边界标记保留恢复语义，不能只留下摘要文字。"
+    },
+    {
+      "find": "...result.hookResults",
+      "note": "Hook 结果和附件也参与重建，不被摘要覆盖。"
+    }
+  ],
+  "session-record": [
+    {
+      "find": "export async function recordTranscript",
+      "note": "从明确的转录入口追持久事实，不从 UI 文本猜保存是否完成。"
+    }
+  ],
+  "permission-rules": [
+    {
+      "find": "if (denyRule)",
+      "note": "整工具拒绝先短路，不能被后续允许来源覆盖。"
+    },
+    {
+      "find": "return null",
+      "note": "本阶段没有异议；调用方还要继续最终权限流程。"
+    }
+  ],
+  "permission-inner": [
+    {
+      "find": "context.abortController.signal.aborted",
+      "note": "权限决策也必须响应取消，不能让停止的任务继续获得效果。"
+    },
+    {
+      "find": "const denyRule",
+      "note": "最终入口有自己的规则与状态消费，不把局部 null 当作授权。"
+    }
+  ],
+  "hook-match": [
+    {
+      "find": "switch (hookInput.hook_event_name)",
+      "note": "不同事件选择不同匹配字段；matcher 不能脱离事件解释。"
+    },
+    {
+      "find": "matchQuery = hookInput.tool_name",
+      "note": "工具事件按工具名匹配，同名连续调用仍要用 tool_use_id 关联。"
+    }
+  ],
+  "hook-pretool": [
+    {
+      "find": "hook_event_name: 'PreToolUse'",
+      "note": "传入明确事件身份，再由执行层选取和聚合 Hook。"
+    },
+    {
+      "find": "tool_use_id: toolUseID",
+      "note": "稳定调用 id 将模型意图、Hook 和工具效果连起来。"
+    }
+  ],
+  "mcp-discovery": [
+    {
+      "find": "isMcpServerDisabled",
+      "note": "禁用服务先剔除，不进入连接与批次处理。"
+    },
+    {
+      "find": "const localServers",
+      "note": "本地进程与远端连接的成本不同，发现并发按类型组织。"
+    }
+  ],
+  "mcp-transform": [
+    {
+      "find": "case 'image':",
+      "note": "图像进入模型前有尺寸与格式处理，不能直接 JSON.stringify。"
+    },
+    {
+      "find": "case 'resource':",
+      "note": "资源还要保留 URI 和来源，并区分文本与二进制。"
+    }
+  ],
+  "skill-fields": [
+    {
+      "find": "const userInvocable",
+      "note": "缺省可调用性与显式 false 不同，字段需要按解析语义消费。"
+    },
+    {
+      "find": "executionContext: frontmatter.context === 'fork'",
+      "note": "fork 是解析后的执行语义，实际隔离仍要追调用方。"
+    }
+  ],
+  "skill-tool": [
+    {
+      "find": "const trimmed =",
+      "note": "先规范名称，再查当前注册集合；空白和未知名称是不同错误。"
+    },
+    {
+      "find": "const foundCommand =",
+      "note": "目录存在不等于此刻已发布为可调用命令。"
+    }
+  ],
+  "agent-run": [
+    {
+      "find": "availableTools: Tools",
+      "note": "工作者工具池与允许规则是两份职责；不要泄漏父任务批准。"
+    },
+    {
+      "find": "const rootSetAppState",
+      "note": "嵌套异步任务要找到真正的共享状态 owner，局部 setter 不一定能更新。"
+    }
+  ],
+  "agent-schema": [
+    {
+      "find": "run_in_background:",
+      "note": "前后台控制等待与通知，不自动提供文件隔离。"
+    },
+    {
+      "find": "isolation:",
+      "note": "工作区隔离与模型上下文隔离分开表达。"
+    }
+  ],
+  "sandbox-config": [
+    {
+      "find": "shouldAllowManagedSandboxDomainsOnly",
+      "note": "组织域名策略不能与用户规则随意取并集。"
+    },
+    {
+      "find": "const allowWrite",
+      "note": "默认可写范围与后面的明确拒绝一起构成最终系统配置。"
+    }
+  ],
+  "sandbox-wrap": [
+    {
+      "find": "await initializationPromise",
+      "note": "已启用沙箱时先等待初始化完成。"
+    },
+    {
+      "find": "throw new Error",
+      "note": "初始化缺失显式失败，不默默转为无隔离执行。"
+    }
+  ],
+  "headless": [
+    {
+      "find": "export async function runHeadless",
+      "note": "这是应用生命周期装配入口，不是直接的一次模型调用。"
+    }
+  ],
+  "structured-io": [
+    {
+      "find": "typeof inputPrompt === 'string'",
+      "note": "先把单个字符串归一化成消息流，后面共用消费路径。"
+    },
+    {
+      "find": "return options.sdkUrl",
+      "note": "本地与远端传输由明确选项选择，不能仅从输出文字推断。"
+    }
+  ],
+  "sdk-stub": [
+    {
+      "find": "throw new Error('query is not implemented",
+      "note": "实际函数体推翻“有导出就可执行”的错误假设。"
+    }
+  ]
+}

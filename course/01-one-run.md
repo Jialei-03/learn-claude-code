@@ -1,80 +1,88 @@
 ---
-motto: 一个用户任务，经过多轮模型、工具与状态交接才真正结束。
-prereq: 第 0 章；了解 async generator
-time: 45 分钟
+motto: 接过第 0 章的证据约束，写出所有后续能力共同使用的 Engine。工具、权限和持久化都通过这里的边界接入。
 learn:
-  - 区分模型停止、查询结束与业务完成
-  - 验证生成器三种退出与 completed 通知
-build: 验证生成器三种退出与 completed 通知
+  - 从固定源码逐段解释本章决策与失败路径
+  - 实现可取消、有界且不执行截断计划的循环
+  - 运行错误反例与回归，解释实际文件、状态或进程结果
+prereq: 第 0 章的实现与实验
+time: 60 分钟
+build: 实现可取消、有界且不执行截断计划的循环
 ---
 
-## 从启动器进入主循环
+## 本章的问题
 
-先看 `entrypoints/cli.tsx`，而不是从最大的文件开始读。它让版本查询走快速路径，其他路径再动态加载。接着到 `main.tsx` 看参数和交互/print 分流；再沿 `cli/print.ts` 或交互控制器进入查询层。
+用户要求把结果写进文件。模型的输出额度耗尽，产生的 JSON 恰好仍可解析，内容却只有 HALF。只检查“有没有工具调用”的循环会把半成品写入磁盘。这不是解析器异常，而是对停止语义的误判。
 
-@ccsrc bootstrap
+我们先用一个故意忽略 stop 的基线写出 HALF，再把同一段回复交给 coda。正确实现把每个截断调用变成错误结果，请模型重新给完整计划；文件最终只能出现 COMPLETE。接着分别制造 Provider 抛错、轮数耗尽和调用者提前关闭生成器。
+
+一次用户任务可能经历多个模型迭代。Engine.running 属于当前任务，iteration 属于模型往返，tool id 属于一次工具意图。不要用同一个 turn 词遮住这三个身份。
+
+## 沿固定源码逐段拆解
 
 @ccsrc query
 
-外层 `query` 是 async generator，委托 `queryLoop` 产生流事件和消息。正常返回后，才把本次消费的命令标记为 completed；异常或生成器被提前关闭，不会走这个正常完成分支。这使“已开始但没有完成”成为可以观察的状态，而不是把所有退出都包装成成功。
+### 外层 query：yield* 的三种完成方式
 
-## 一轮模型请求不等于一个用户任务
+consumedCommandUuids 在外层创建并传给 queryLoop。只有 yield* 正常返回，后面的 completed 通知才执行；内部 throw 会传播，外部调用 .return() 会关闭委托链。把通知挪进 finally 会把失败与提前关闭都误记为完成。finally 适合释放资源，业务完成需要保留自己的条件。
 
 @ccsrc query-state
 
-`queryLoop` 把 systemPrompt、权限函数、querySource 等稳定参数与跨迭代 State 分开。State 包含 messages、toolUseContext、压缩追踪、输出上限恢复次数、turnCount 和继续原因等。一次用户任务可能经历多次模型请求与多次工具执行。
+### queryLoop：稳定参数与跨迭代 State
 
-阅读 while 循环时，应标记每个 continue 与 return：工具调用之后继续、预算或压缩恢复之后继续，与没有下一步工作时结束，语义并不相同。源码中把继续原因显式记录，方便测试恢复路径，而不是从最终文字猜发生了什么。
+systemPrompt、canUseTool、querySource 等先从 params 取出；messages、toolUseContext、压缩追踪、输出恢复次数、turnCount 和 transition 放进 State。每次 continue 以新的 State 表达转换，阅读时应逐个检查哪些字段保留、哪些清零、哪个计数递增。
 
-## 输出与持久记录是两个消费者
+buildQueryConfig 在入口抓取一份配置；内存预取只按用户任务启动一次，而 Skill 发现可以按迭代推进。两者说明“在循环外做一次”与“每次迭代做一次”具有可测的成本和一致性差别。using 还把预取资源释放关联到生成器退出路径。
 
-模型事件可能在文本尚未完成时就向 UI 或 SDK 流出；正式 Message 还要被归一化并写入转录。UI 显示了一行文字、客户端收到了 event、磁盘提交了一条记录，分别属于不同边界。
-
-跟踪一个 bug 时，选择稳定关联字段：用户请求身份、assistant message、tool_use id，以及父子会话关系。不要用“终端看起来停了”替代对生成器、工具和持久层的检查。
-
-## 读源码时应得到的状态图
+### 把五条出口画在同一张图上
 
 ```mermaid
 flowchart TD
-  Input[用户输入] --> Loop[queryLoop 状态]
-  Loop --> Model[模型请求]
-  Model --> Tool{是否有工具或继续条件}
-  Tool -->|有| Loop
-  Tool -->|结束| Terminal[终态]
+  Q[请求模型] --> R{响应状态}
+  R -->|error 或 abort| F[失败或取消]
+  R -->|length| P[错误结果，不执行工具]
+  P --> Q
+  R -->|完整| T[执行工具并交回结果]
+  T --> C{有工具或插话}
+  C -->|有| Q
+  C -->|没有| N{有后续任务}
+  N -->|有| Q
+  N -->|没有| D[清理后正常完成]
 ```
 
-这张图是阅读主干，不枚举所有 feature 分支。每条恢复边都应回到源码确认触发条件。下方 2.1.296 的 stream-json 实验用于练习观察事件，不能据此省略旧版本源码的分支判断。
+coda 把这些契约缩成一个可读循环；它没有复刻产品里的全部恢复策略、Stop Hook 和内部功能开关。对应源码里每条恢复边，仍应按真实 State 更新解释。
 
-## 把修复任务拆成三次不同的“完成”
+## 接入贯穿项目
 
-假设模型先请求读取 `slug.ts`，接着编辑，再运行测试。用户只提交了一次任务，模型却至少要在工具结果返回后再次推理。`turnCount` 是循环内部的计数，不能看到一个“turn”字段便把它等同于终端里的一条用户输入。
+@implementation 01-one-run
 
-这里最容易混淆三个时刻：模型输出结束、`queryLoop` 返回 terminal、上层完成持久化与界面结算。模型返回了 stop reason 只说明这次采样停止；若有工具调用，循环仍有工作。反过来，UI 收到了文字也不说明转录已落盘。排查“明明回答了却没有保存”时，这三个时刻要分别打点。
+### 逐步跟踪本章实现
 
-## 精读 State：每个字段都对应一条恢复路径
+跟踪一次 `run`：入口先拒绝已有任务占用，再复制 history 并追加本次 user。`messages` 是模型往返的工作状态，`running` 是整个用户任务的占用状态；工具调用多轮不会把占用提前释放。每次请求都拿消息副本，避免 Provider 端口修改宿主数组。
 
-读 `State` 时，可以把字段分成三组。`messages` 和 `toolUseContext` 承载下一轮工作的材料；`autoCompactTracking` 与 `hasAttemptedReactiveCompact` 防止压缩恢复失控；`maxOutputTokensRecoveryCount`、`turnCount` 和 `transition` 记录循环为什么继续。稳定参数和可变状态分开，使每个 continue 的更新成为一个可以检查的整体。
+收到 reply 后，先将 assistant 及 calls 记入消息，再检查 `stop === "length"`。截断回复中的每个调用都生成对应 id 的错误结果，但不进入 Toolset；这既守住副作用边界，也让下一次请求知道哪些意图没有执行。完整回复才执行工具，把结果追加后继续。
 
-做一个很具体的阅读动作：搜索 `state =`，为每次赋值记下“旧 messages 是否保留”“是否递增轮数”“恢复次数是否改变”。只搜索 `while` 的位置，看不到这个状态机。一个修复若漏带某个字段，主路径可能仍然工作，只有恢复分支才会出现问题。
+收尾处的 `cleaned` 保护清理只运行一次。正常完成先 cleanup 再 onCompleted，调用者提前关闭则只走 finally；Provider 或 cleanup 抛错由失败路径归因。`steering.splice(0)` 在当前迭代边界交付插话，followups 则等当前模型工作完成后接续，两个队列的交付时机不同。
 
-## 预测：取消是否也应该发 completed
+## 运行本章实验
 
-正常返回、内部抛错、调用者提前关闭生成器，都会结束迭代。它们应该留下相同的业务完成记录吗？先按自己的理解填三行表，再运行：
+```bash
+node --disable-warning=ExperimentalWarning labs/chapters/01-one-run.mjs
+```
 
-@lab node --disable-warning=ExperimentalWarning labs/engineering/run.mjs lifecycle
+@experiment 01-one-run
 
-这里执行的是还原源码中的外层 `query`。内部 `queryLoop` 被一个可控生成器替代，分别制造三种退出；记录器也是测试端口。结果证明正常退出才通知 completed，而生成器内部的 finally 在三种退出中都会清理。**释放资源与宣告工作成功，是两份不同的契约。**
+## 逐项解释实验结果
 
-这也解释一个常见错误：把 completed 通知挪进 finally，看似修复了“有开始没有结束”的记录，实际会把失败和取消误报成完成。需要完整生命周期时，应增加明确的 failed/cancelled 状态，而不是改变 completed 的含义。
+先比较磁盘上的 HALF 与 COMPLETE，再看事件轨迹。注意 response length 后没有 tool_start；下一次完整调用才产生副作用。正常任务有一次 completed；提前 .return() 清理了资源，却没有多出业务完成。
 
-## 跟着一个工具调用做阅读练习
+故意把 length 分支删除，测试应在“文件最终只能由完整计划写入”的断言处失败。把 completed 移进 finally，提前关闭测试应失败。这两种修改都能把设计理由变成可反驳的事实。
 
-在源码中标出四个位置：assistant 消息进入循环、tool_use 被交给执行器、tool_result 回到 messages、下一次模型请求开始。为同一个调用保留 tool_use id；若只根据“第几条消息”关联，插入 Hook 或附件后编号就会改变。
+## 继续动手与验收
 
-再做一次失败注入：让教学生成器在第一次 yield 后抛错。验收条件是错误传播、清理完成、completed 没有被发出。把这三条断言写出来，比在终端截一张“出错了”的图更有用。
+增加 maxTurns=1 的持续工具回复，断言得到 budget。再在工具等待期间调用 steer 和 follow，记录下一次请求中两条消息分别出现的位置，解释为什么它们需要不同队列。
 
-::: interview 为什么 Agent 的主循环适合用 async generator 表达？
-它能逐步产出事件和消息，又能在最后返回明确终态；调用者可以渲染进度、传递取消并管理背压。但生成器正常完成、抛错与提前 return 的清理语义不同，必须检查这些退出路径，而不能只关注最终 yield 的文字。
+::: interview 生成器三种退出应发出相同的业务完成通知吗？
+正常耗尽、内部抛错和调用者提前关闭有不同语义。业务 completed 只在正常路径发生；资源清理必须覆盖三种出口，并且只执行一次。本章用提前 .return() 和清理计数，检验通知没有被错误放进 finally。
 :::
 
 @observation 01-one-run

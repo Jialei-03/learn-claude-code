@@ -56,3 +56,7 @@ test-results/
 # 课程网站构建输出
 site/dist/
 assets/.cache/
+
+# Ephemeral course verification reports
+labs/chapters/.last-run.json
+.verification/

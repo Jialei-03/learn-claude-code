@@ -1,0 +1,24 @@
+{
+  "sources": [
+    {
+      "repo": "https://github.com/earendil-works/pi.git",
+      "commit": "f9a26365568127461c47a07a37dcb42c140a3ac5",
+      "directory": "../pi-v1.5.0"
+    },
+    {
+      "repo": "https://github.com/Jialei-03/learn-pi-agent.git",
+      "commit": "eb8d16bfc64d5ee373e5a311a322feb301b02066",
+      "directory": "../learn-pi-agent"
+    },
+    {
+      "repo": "https://github.com/anthropics/sandbox-runtime.git",
+      "commit": "d9aac2098351ca17f3743fbaf6ecbd0051b7e00e",
+      "directory": "../sandbox-runtime-v0.0.79"
+    },
+    {
+      "repo": "https://github.com/anthropics/claude-agent-sdk-python.git",
+      "commit": "f7529348747235da34af3ed202251228ff31db08",
+      "directory": "../claude-agent-sdk-python-v0.2.165"
+    }
+  ]
+}

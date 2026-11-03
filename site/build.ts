@@ -21,15 +21,20 @@ import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 import { createHighlighter } from 'shiki';
 import { CC, CC_SOURCE, OSS, PI, chapters, parts, type OssName } from '../course/syllabus.ts';
-import { layout, homePage, interviewPage, moxMark, sourceIndexPage, type PageMeta } from './templates.ts';
+import { layout, homePage, interviewPage, moxMark, sourceIndexPage, workshopPage, type PageMeta } from './templates.ts';
 
-import { verifySourcemap } from '../lab/sourcemap.ts';
+import { sourceNotes } from '../scripts/source-notes.mjs';
+import { SOURCE_DIR, verifySourcemap } from '../lab/sourcemap.ts';
 
 const SOURCE_REFERENCES = verifySourcemap();
 
+import { buildCourseRuntime } from '../scripts/course-runtime.mjs';
 import { engineeringMap } from '../scripts/engineering-map.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const COURSE = buildCourseRuntime(ROOT);
+const sourceFiles = new Map<string,string>();
+const NOTES = sourceNotes(ROOT, SOURCE_REFERENCES, file => { if (!sourceFiles.has(file)) sourceFiles.set(file, execFileSync('git', ['-C', SOURCE_DIR, 'show', `${CC_SOURCE.commit}:${file}`], {encoding:'utf8',maxBuffer:4000000})); return sourceFiles.get(file)!; });
 const OUT = join(ROOT, 'site/dist');
 const PI_SRC = process.env.PI_SRC ?? join(ROOT, '../pi-v1.5.0');
 // learn-pi-agent：mox 和扩展的兼容实现都在那里，用 @mox 引用
@@ -162,7 +167,7 @@ function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss', args: string, where:
     : kind === 'pi'
     ? `${PI.repo}/blob/${PI.commit}/${ex.file}#L${ex.start}-L${ex.end}`
     : kind === 'mox'
-      ? `https://github.com/Jialei-03/learn-pi-agent/blob/main/${ex.file}#L${ex.start}-L${ex.end}`
+      ? `https://github.com/Jialei-03/learn-pi-agent/blob/eb8d16bfc64d5ee373e5a311a322feb301b02066/${ex.file}#L${ex.start}-L${ex.end}`
       : `https://github.com/Jialei-03/learn-claude-code/blob/main/${ex.file}#L${ex.start}-L${ex.end}`;
   if (kind === 'pi' || oss) citations.push({ source: oss ?? 'pi', chapter: where.slug, title: where.title, file: ex.file, start: ex.start, end: ex.end, url });
   const badge = oss ? `<span class="src-badge oss">${OSS[oss].label} ${OSS[oss].version} · ${OSS[oss].license}</span>`
@@ -226,7 +231,7 @@ function renderSourceReference(key: string, where: { slug: string; title: string
   const ref = SOURCE_REFERENCES[key];
   if (!ref) { errors.push(`${where.slug}: 未知 sourcemap 证据 ${key}`); return ''; }
   citations.push({ source: 'claude-code-sourcemap', chapter: where.slug, title: where.title, file: ref.file, start: ref.start, end: ref.end, url: ref.url });
-  return `<aside class="source-evidence"><p><strong>源码依据 · Claude Code ${CC_SOURCE.version}</strong> <span>sourcesContent 已逐字核对</span></p><a href="${ref.url}" target="_blank" rel="noopener"><code>${esc(ref.file)}</code> · L${ref.start}–L${ref.end}</a><p>${esc(ref.claim)}</p></aside>`;
+  return `<aside class="source-evidence"><p><strong>源码依据 · Claude Code ${CC_SOURCE.version}</strong> <span>sourcesContent 已逐字核对</span></p><a href="${ref.url}" target="_blank" rel="noopener"><code>${esc(ref.file)}</code> · L${ref.start}–L${ref.end}</a><p>${esc(ref.claim)}</p></aside>` + NOTES(key);
 }
 
 
@@ -343,10 +348,13 @@ function preprocess(source: string, where: { slug: string; title: string }) {
       continue;
     }
 
-    const directive = line.match(/^@(pi|code|mox|oss|lab|trace|figure|include|ccsrc|observation)\s+(.+)$/);
+    const directive = line.match(/^@(pi|code|mox|oss|lab|trace|figure|include|ccsrc|observation|implementation|experiment|journey)\s+(.+)$/);
     if (directive) {
       const [, kind, args] = directive;
-      const html = kind === 'ccsrc' ? renderSourceReference(args.trim(), where)
+      const html = kind === 'journey' ? COURSE.journey(args.trim())
+        : kind === 'implementation' ? COURSE.implementation(args.trim(), code => highlight(code, 'js'))
+        : kind === 'experiment' ? COURSE.experiment(args.trim(), code => highlight(code, 'json'))
+        : kind === 'ccsrc' ? renderSourceReference(args.trim(), where)
         : kind === 'include' ? renderInclude(args.trim(), where.slug)
         : kind === 'pi' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
         : kind === 'lab' ? renderLab(args, where.slug)
@@ -450,6 +458,7 @@ for (const page of pages) {
 const MAP = engineeringMap(ROOT);
 pages.push({ file: 'map.html', html: MAP.html });
 pages.push({ file: 'index.html', html: homePage() });
+pages.push({ file: 'workshop.html', html: workshopPage(COURSE.overview()) });
 pages.push({ file: 'interview.html', html: interviewPage(interviews) });
 pages.push({ file: 'sources.html', html: sourceIndexPage(citations) });
 
@@ -486,5 +495,6 @@ mkdirSync(join(OUT, 'engineering'), { recursive: true });
 writeFileSync(join(OUT, 'engineering/architecture.canvas'), MAP.canvas);
 writeFileSync(join(OUT, 'engineering/engineering-map.md'), MAP.markdown);
 writeFileSync(join(OUT, 'static/search.json'), JSON.stringify(searchIndex));
+writeFileSync(join(OUT, 'course-evidence.json'), JSON.stringify(COURSE.evidence(), null, 2));
 writeFileSync(join(OUT, 'source-evidence.json'), JSON.stringify({ source: CC_SOURCE, observationVersion: CC.version, references: SOURCE_REFERENCES }, null, 2));
 console.log(`已生成 ${relative(ROOT, OUT)}：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处源码引用（含还原源码索引），${interviews.length} 道面试题`);

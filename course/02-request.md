@@ -1,45 +1,48 @@
 ---
-motto: 请求的每一个区域，都有自己的来源、顺序和预算。
-prereq: 第 1 章；了解模型消息与工具协议
-time: 45 分钟
+motto: 循环只管什么时候请求；本章增加 request 回调，让提示、历史和工具定义通过同一个边界进入模型。
 learn:
-  - 推导提示词分支与完整请求结构
-  - 运行四组提示优先级反例
-build: 运行四组提示优先级反例
+  - 从固定源码逐段解释本章决策与失败路径
+  - 为 Engine 接入稳定、可检查的请求投影
+  - 运行错误反例与回归，解释实际文件、状态或进程结果
+prereq: 第 1 章的实现与实验
+time: 60 分钟
+build: 为 Engine 接入稳定、可检查的请求投影
 ---
 
-## 先找到 system prompt 的合成规则
+## 本章的问题
+
+同一个修复任务，从 CLI 与 SDK 发出却表现不同。先不要把差异归给模型随机性：列出两端的 system、messages、tools 和采样参数，常常就能发现它们根本不是同一个请求。
+
+coda 的 scripted provider 与可选 Anthropic adapter 共用 buildRequest。默认实验不会调用网络；显式提供 baseURL、apiKey 和 model 后才使用 live adapter。API 凭据没有进入请求轨迹、会话或 prefixHash。
+
+先做一个最容易写错的基线：把所有提示片段无条件拼起来。override 本应提前返回，这个基线却把 append 也带进去；Agent 提示和 custom 提示也被错误叠加。我们改成与常规源码分支一致的选择树。
+
+## 沿固定源码逐段拆解
 
 @ccsrc system-prompt
 
-`buildEffectiveSystemPrompt` 是比“请求里有三块系统提示”更稳定的解释入口。它按 override、Agent 指令、自定义或默认提示、append 等分支构造最终 SystemPrompt。某些协调和主动模式还受 feature 与运行状态影响。
+### override 先返回，append 不是无条件存在
 
-关键在于替换和追加的差别：追加保留原始层；替换选择另一来源。若只检查某段文本是否出现，却没有记录当前 Agent 定义与 override 条件，很容易把配置变化误判成模型行为。
+函数第一道 if 检查 overrideSystemPrompt 的 truthy 值并立即返回。常规分支再计算 Agent 提示；内置 Agent 与自定义 Agent 的 getSystemPrompt 调用参数不同。最终在 Agent、自定义、默认提示中选底座，然后追加 append。
 
-## 最终发送参数还包含工具和缓存策略
+coordinator 和 proactive 分支受 feature 与环境控制，其中 proactive 会把 Agent 指令追加到默认提示而不是替换。课程的差分实验关闭这些特殊 gate，只证明普通分支；不能把四行实验结果推广到所有产品模式。
 
 @ccsrc api-params
 
-沿 `services/api/claude.ts` 的参数构造，能看到 model、经过缓存断点处理的 messages、system、allTools、tool choice、输出上限和 thinking 等同时被装入请求。缓存与工具 schema 不是 UI 上的一行设置，而是最终请求形状的一部分。
+### 从 paramsFromContext 看最终请求的四份材料
 
-因此分析 token 消耗时，至少分开用户文本、历史消息、系统提示、工具定义和图片等模态。工具列表变化可能改变缓存可复用前缀；只看用户文字长度无法解释输入规模。
+model 经过规范化；messagesForAPI 还会经过 addCacheBreakpoints；system 与 allTools 同时进入请求。max_tokens、thinking、beta 条件和 extraBodyParams 也参与结果。查“上下文为什么这么大”时只统计用户文字，会漏掉工具定义和系统提示。
 
-## source 中的条件需要分层验证
+| 材料 | 在请求层核对什么 | 错误比较方式 |
+| --- | --- | --- |
+| system | 底座来源与追加顺序 | 只看最后一行用户输入 |
+| messages | 协议配对、裁剪、缓存标记 | 直接把 JSONL 当 wire |
+| tools | 名称、schema 与排列 | 只数工具数量 |
+| 采样字段 | 模型约束、输出与 thinking | 只替换 model 字符串 |
 
-先检查调用者给了什么，再检查参数构造是否保留，再观察服务实际收到了什么。这三个环节能分别失败：配置层选择错模型，适配层丢字段，供应商拒绝不兼容参数。
+coda 的 prefixHash 只覆盖稳定的 system 与工具定义，用来观察哪些改动破坏前缀；它不是供应商真实 cache hit 的证明，也没有代替计费统计。
 
-| 问题 | 先找哪层证据 |
-| --- | --- |
-| 自定义 prompt 未生效 | buildEffectiveSystemPrompt 的来源和优先级 |
-| 工具定义过大 | allTools 构造与发现过滤 |
-| 缓存命中变化 | 缓存断点和前缀变化 |
-| thinking 或长度报错 | 最终请求参数与供应商响应 |
-
-2.1.88 的源码解释构造机制；2.1.296 的记录代理提供另一个版本的实际结构样本。原课程测得的块数与长度只属于记录样本，不应改写成所有 Claude Code 版本的常数。
-
-## 用四组输入理解优先级，而不是背一句“可以自定义提示词”
-
-把系统提示想成有优先级的组装过程。常规分支先在 Agent 提示、自定义提示和默认提示中选底座，再追加 append；最高层的 override 则直接提前返回。由此可以推导：append 并非无条件存在，override 可以让它不进入结果。
+## 机制总览
 
 ```mermaid
 flowchart TD
@@ -56,31 +59,38 @@ flowchart TD
   F -->|开启| S[另读 coordinator 或 proactive 分支]
 ```
 
-@lab node --disable-warning=ExperimentalWarning labs/engineering/run.mjs prompt
+## 接入贯穿项目
 
-实验把 feature gate 关闭，逐个构造 default、custom、Agent、override 输入。执行的是实际 `buildEffectiveSystemPrompt`；Agent 判断、类型包装和配置是测试端口。因此它验证常规分支的优先级，不能覆盖所有产品模式。你可以增加“override 是空字符串”的用例，观察 truthy 判断与“字段已出现”之间的区别。
+@implementation 02-request
 
-## 一次请求至少要分四个区域看
+### 逐步跟踪本章实现
 
-修复 `normalizeSlug` 时，用户消息可能只有十几个字，请求体却远不止这些。系统提示说明身份、工具约束与环境；历史保存此前读到的代码和工具结果；工具 schema 让模型知道调用参数；模型选项决定输出上限、thinking 和协议扩展。
+从一条磁盘日志到一份 wire，中间有两次投影。`projectHistory` 先按 assistant.calls 的 id 重建结果，丢弃没有意图的孤立 tool 消息，并为中断调用补一条错误结果；它不改写原日志。`buildRequest` 再从工具对象挑出 name、description、schema，执行函数不会被序列化给模型。
 
-| 区域 | 要问的问题 | 容易产生的误判 |
-| --- | --- | --- |
-| system | 哪一层选了这个底座 | 以为 append 总能覆盖全部规则 |
-| messages | 是否归一化、裁剪、配对 | 把磁盘 JSONL 当作原样发送的请求 |
-| tools | 哪些定义已暴露、哪些延迟 | 工具列表长度等于模型已知 schema 数量 |
-| 采样与缓存参数 | 是否依模型和模式调整 | 只改模型名就认为协议可兼容 |
+`effectivePrompt` 的第一条 return 是关键：存在 override 时，agent、custom、defaults 和 append 都不进入这一分支。没有 override 才选择 agent/custom/defaults，再拼 append。memories 在调用处单独加入；因此“append 总在最后”必须说明它属于哪一层，而不能凭字段名推断。
 
-源码中的 `addCacheBreakpoints` 很关键：最终 messages 在这里增加缓存相关投影。外层应用看到的历史对象与传输层发送的结构可能不同。排查缓存命中率下降，应比较相邻请求的稳定前缀、工具顺序和附加块，不能只比较用户输入。
+`prefixHash` 只计算 system 与工具 schema。改变用户消息应保持这个值，改变工具定义应改变它。它是课程检查材料稳定性的摘要，不能直接证明服务端缓存命中。可选 Anthropic 适配器负责把内部 tool/result 转成供应商协议，离线实验没有调用该网络端口。
 
-## 一个可以操作的排查题
+## 运行本章实验
 
-如果“同一任务在 CLI 和 SDK 中表现不同”，先用完全相同的工作目录、模型和配置开始；分别记录 system 的来源、工具名字及 schema 数量、messages 的角色序列和采样参数。先比较结构和哈希，再按需检查内容，避免把大量私人代码写进调试日志。
+```bash
+node --disable-warning=ExperimentalWarning labs/chapters/02-request.mjs
+```
 
-本章后面的 2.1.296 请求实验有真实录制可回放。用它练习找这四个区域，再回到 2.1.88 的参数构造位置核对。完成标准是能指出一个具体结构差异如何影响模型，而不只是说“提示词不一样”。
+@experiment 02-request
 
-::: interview 研究请求构造时，为什么既要看配置函数又要看最终 params？
-配置表达意图，中间层可能按模式或模型重写，最终 params 才接近网络契约。应沿完整调用链记录来源、优先级和转换，再用对应版本的代理或 fake transport 验证。静态源码与实际请求相互约束，不能互相替代。
+## 逐项解释实验结果
+
+四组提示输入同时交给原创实现与提取的原函数，逐项比较输出。随后只改变用户历史，prefixHash 应不变；改变系统规则则应变化。输出中的哈希是可复查的结构证据，不能解读为实际缓存命中。
+
+可选 live adapter 明确做了工具调用与结果的协议转换。它使用完整响应，暂未实现生产级 SSE、所有 beta 或跨 Provider 协议；这些边界不影响离线模型和其余章节的组合实验。
+
+## 继续动手与验收
+
+给同一个请求添加一项工具 schema，检查 prefixHash。再构造一个缺 tool_result 的历史，查看投影如何补齐，确认原始历史没有被修改。
+
+::: interview 为什么 override 分支可能不保留 append？
+先按 override 的提前返回确定主提示，再选择 agent/custom/defaults 与 append，最后装配记忆、工具 schema 和投影消息。prefixHash 只能检验前缀材料是否相同；服务端缓存是否命中还需要实际请求与响应证据。
 :::
 
 @observation 02-request

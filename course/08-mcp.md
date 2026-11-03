@@ -1,42 +1,41 @@
 ---
-motto: 外部能力要走过发现、适配、发布和清理，才能稳定使用。
-prereq: 第 3、6 章；了解 JSON-RPC
-time: 55 分钟
+motto: 模型循环不关心工具来自哪里；本章把外部工具变成 Toolset 能消费的定义，并承担连接的整个生命周期。
 learn:
-  - 追踪发现到模型能力的发布链
-  - 设计多模态结果转换测试矩阵
-build: 设计多模态结果转换测试矩阵
+  - 从固定源码逐段解释本章决策与失败路径
+  - 让同一个 Agent 接入本地 stdio 工具服务
+  - 运行错误反例与回归，解释实际文件、状态或进程结果
+prereq: 第 7 章的实现与实验
+time: 90 分钟
+build: 让同一个 Agent 接入本地 stdio 工具服务
 ---
 
-## 从连接走到可供模型选择的工具
+## 本章的问题
+
+把工具清单写进配置，不代表模型马上能调用它。必须先连接，完成初始化，发现工具，再适配 schema 与执行函数，最后把能力放进请求。本章会真的启动一个本地 MCP fixture，不把合成 JSON 当成服务已经运行。
+
+客户端同时发出 A 和 B，依靠 request id 对应响应。未知方法、没有答复、进程退出和主动关闭，都必须让相应 pending Promise 得到结算，否则程序可能一直不退出。
+
+## 沿固定源码逐段拆解
 
 @ccsrc mcp-discovery
 
-`getMcpToolsCommandsAndResources` 把连接对象转换为工具、命令与资源。配置存在、握手成功、列表发现完成、工具进入当前请求、实际调用成功，是五个不同阶段。
+### 先剔除 disabled，再按传输组织连接
 
-因此“服务器 connected 但模型没用工具”没有直接给出根因。应先检查发现列表和工具名，再追工具搜索/延迟加载过滤，最后看模型选择。不要在没有 schema 的请求中期待模型猜对复杂参数。
+getMcpToolsCommandsAndResources 从配置读取 entries；disabled 服务返回禁用状态且空能力，不进入连接批次。本地服务与远程服务分组，反映进程启动与网络连接的资源差别。
 
-## 外部结果需要适配和边界控制
+### 发现与模型可见性之间仍有发布过程
+
+连接成功、tools/list 完成、本地 Tool 适配、当前请求暴露工具，是连续但不同的边。排查“连上却没有工具”，应找首次缺失的那一步，而不是只重启进程改变时序。
 
 @ccsrc mcp-transform
 
-`transformResultContent` 按 text、audio、image 与 resource 分支处理内容。图片涉及尺寸和编码转换；某些二进制内容会保存后变成文字引用。这里的处理既影响模型能否接收，也影响上下文成本。
+### transformResultContent 有类型分支和副作用
 
-MCP 结果不是系统指令。来源标识、工具调用关联、错误语义和内容信任需要由宿主保留；把外部文字直接提升为高优先级命令，会混淆边界。
+text 可以直接变为文本块；image 需要尺寸与格式处理；audio 与非图像 blob 可能持久化为可引用文本；resource 还要保留 URI 与来源。transform 这个名字并不意味着纯函数。
 
-## 连接、认证和会话过期分别恢复
+coda 的 fixture 只声明 text 输入与 text 输出。通用 RPC 传输和文本 MCP 适配被分开，没有把有限的 fixture schema 校验宣称为完整 JSON Schema 支持。图片和资源的扩展练习需要单独测试转换和持久化端口。
 
-继续读 client 的连接缓存、超时包装和过期错误处理。网络重连并不自动证明旧的 tool call 可以安全重试；有副作用的工具尤其要考虑是否已经执行、结果是否只是丢失。
-
-一次最小调查应包含 server identity、transport、发现版本、tool name、call id、返回内容类型与错误。避免把一个传输层问题修成“永远忽略异常”，那会让真实用户失败变得不可见。
-
-## 对照记录的用途
-
-2.1.296 的握手和工具搜索录制可以帮助提出问题；2.1.88 的代码负责解释本基准的装配与转换。延迟工具 schema 的精确行为，需要同时追该基准的 tool search 代码和实际请求。
-
-## 从“服务连上了”到“模型能调用”还有多步
-
-配置被读取后，禁用服务会先被剔除，避免它们发起连接。活跃服务再按本地与远程分类：本地 stdio 往往意味着启动进程，和发起 HTTP 请求的资源成本不同。连接完成之后还需要发现工具、适配 schema、发布能力，再进入本次请求。
+## 机制总览
 
 ```mermaid
 flowchart TD
@@ -48,33 +47,38 @@ flowchart TD
   X --> R[转换多模态结果]
 ```
 
-如果服务已连接但模型没看到工具，沿这条链找第一个缺失的结果。直接重启服务可能暂时改变时序，却没有说明是发现失败、发布滞后还是请求捕获过早。
+## 接入贯穿项目
 
-## 结果适配为什么不是 JSON.stringify
+@implementation 08-mcp
 
-模型协议和 MCP 的内容类型不同。源码对 text 直接生成文本块；audio 会持久化为可引用文本；image 需要调整大小并转成模型接受的图像块；resource 还分 text 和 blob。资源的 URI 与服务名会进入前缀，帮助保留来源。
+### 逐步跟踪本章实现
 
-| MCP 内容 | 需要的适配 | 如果简单转 JSON |
-| --- | --- | --- |
-| text | 文本块 | 增加无用结构噪声 |
-| image | 尺寸、格式、base64 图像块 | 模型看到字符串而非图像 |
-| audio / 非图像 blob | 持久化并产生说明 | 大二进制挤占上下文 |
-| text resource | 内容与 URI 来源 | 丢失来源关系或浪费预算 |
+`connectMcp` 在返回工具目录前完成 initialize、initialized 通知与 tools/list。发现到的工具被包装成普通工具定义，进入既有 Toolset；MCP 因而复用权限、hook 和工具结果归属，不另写一套旁路执行逻辑。
 
-读这段函数时要同时看输入类型、输出类型和存储副作用。一个 `transform` 名字不意味着它是纯函数。对带 blob 的分支设计测试时，应替换持久化和图像处理端口，分别验证结构与真实文件行为。
+StdioRpc 的 pending 按 request id 保存 resolve、reject 与计时器。并发 tools/call 即使乱序返回，也按 id 找到自己的等待者；JSON-RPC error 和协议里的工具 isError 是不同层的失败，前者拒绝请求，后者是一次完成但出错的工具结果。
 
-## 工具名、连接名与调用 id 各管什么
+连接异常时 fail 拒绝所有未完成请求，close 等待真实子进程退出。初始化中途出错也在 catch 中关闭 peer，避免遗留进程。这里实现的是课程 fixture 所需的 stdio 子集和 text 参数校验；扩展到任意 MCP schema、通知与传输方式还需要独立协议工作。
 
-多个服务器都可能提供 search。模型可见名称需要解决冲突，服务器名决定连接，调用 id 则标识某一次请求。重连后“相同名字的工具”不一定仍绑定同一连接代；一个长时间运行的 Turn 还可能握着旧能力视图。这是适配器工程里常见的生命周期问题。
+## 运行本章实验
 
-本章随附的 2.1.296 实验包含本地 stdio 服务与真实调用录制。读完后可以复现三个故障：工具不存在、服务返回错误、进程意外退出。分别看错误如何变成工具结果，以及退出时子进程是否被清理。
+```bash
+node --disable-warning=ExperimentalWarning labs/chapters/08-mcp.mjs
+```
 
-## 练习：定义一个结果转换矩阵
+@experiment 08-mcp
 
-给 text、image、text resource、blob resource 各写一条最小合成输入；逐项说明输出应包含什么、哪个依赖会被调用、哪个分支会落盘。不能只检查函数“不抛错”，应断言模型协议能接受的结构和来源标签。
+## 逐项解释实验结果
 
-::: interview MCP 连接成功能证明工具可用吗？
-只能证明某个连接阶段成功。还要完成 tools/list、过滤、当前上下文发布、请求 schema 投影和实际调用。应沿这条时间线检查，而不是让 UI 的 connected 标签代替全部能力验收。
+实验真实完成 initialize、tools/list、两次并发调用、远端错误、超时与 close。超时后 pending Map 必须为空；close 返回后进程确实退出。工具的结果会继续交给相同的 Toolset 和权限 gate。
+
+打开 runtime/rpc.mjs 的 close，看它怎样拒绝 pending、关闭 readline、结束 stdin 并等待子进程退出。只 child.kill 而不等待，会把资源泄漏留给下一章。
+
+## 继续动手与验收
+
+给 fixture 增加一个返回 isError 的工具，确认它成为工具结果而非连接崩溃。再加入 text resource，明确来源信息保存在哪；不要直接把整个二进制 JSON 塞进模型文本。
+
+::: interview MCP 已连接为什么还不代表模型能调用？
+连接层请求 id 解决并发响应归属，Toolset 的 call.id 解决模型结果归属。初始化、工具目录、调用和关闭都要跨实际 stdio 验证；JSON-RPC error 与工具 isError 分别代表协议调用失败和工具执行失败。
 :::
 
 @observation 08-mcp
