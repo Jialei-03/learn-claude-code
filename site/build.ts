@@ -229,13 +229,6 @@ function renderSourceReference(key: string, where: { slug: string; title: string
   return `<aside class="source-evidence"><p><strong>源码依据 · Claude Code ${CC_SOURCE.version}</strong> <span>sourcesContent 已逐字核对</span></p><a href="${ref.url}" target="_blank" rel="noopener"><code>${esc(ref.file)}</code> · L${ref.start}–L${ref.end}</a><p>${esc(ref.claim)}</p></aside>`;
 }
 
-function renderObservation(slug: string, where: { slug: string; title: string }) {
-  if (slug !== where.slug) { errors.push(`观察版本章节不匹配 ${slug}`); return ''; }
-  const { body } = parseFrontmatter(readFileSync(join(ROOT, 'observations', `${slug}.md`), 'utf8'));
-  const marked = body.replace(/^::: interview /gm, '::: interview （观察 2.1.296）');
-  const html = renderMarkdown(preprocess(marked, where), []);
-  return `<details class="observation-archive"><summary>独立实验对照 · Claude Code ${CC.version}（展开）</summary><div class="observation-notice">以下是另一版本的录制与分析，用来比较变化；不作为 ${CC_SOURCE.version} 的运行证明。</div>${html}</details>`;
-}
 
 function renderInclude(file: string, where: string) {
   const path = join(ROOT, file);
@@ -289,6 +282,7 @@ md.renderer.rules.link_open = (tokens, i, options, _env, self) => {
 md.renderer.rules.fence = (tokens, i) => {
   const token = tokens[i];
   const lang = token.info.trim().split(/\s+/)[0] || 'text';
+  if (lang === 'mermaid') return `<figure class="diagram lesson-diagram"><pre class="mermaid">${esc(token.content)}</pre><figcaption>机制图 · 依据本章固定源码整理</figcaption></figure>`;
   return `<figure class="src plain"><figcaption><span class="src-lang">${esc(lang === 'text' ? '' : lang)}</span><button class="copy" type="button" aria-label="复制代码">复制</button></figcaption>${highlight(token.content.replace(/\n$/, ''), lang)}</figure>`;
 };
 md.renderer.rules.table_open = () => '<div class="table-wrap"><table>';
@@ -322,6 +316,12 @@ const CALLOUT_LABEL: Record<string, string> = { note: '说明', warn: '注意', 
 const interviews: { chapter: string; title: string; question: string; answer: string }[] = [];
 
 function preprocess(source: string, where: { slug: string; title: string }) {
+  source = source.replace(/^@observation (.+)$/gm, (_, slug: string) => {
+    if (slug !== where.slug) { errors.push(`观察版本章节不匹配 ${slug}`); return ''; }
+    const { body } = parseFrontmatter(readFileSync(join(ROOT, 'observations', `${slug}.md`), 'utf8'));
+    const marked = body.replace(/^::: interview /gm, '::: interview （观察 2.1.296）').replace(/^## /gm, '## 实验 · ');
+    return `\n## 独立实验：Claude Code ${CC.version}\n\n::: note 版本对照\n下面保留另一版本的真实录制与完整实验讲解。它用于比较行为，不作为 ${CC_SOURCE.version} 的运行证明。\n:::\n\n${marked}`;
+  });
   const lines = source.split('\n');
   const out: string[] = [];
   let fence = false;
@@ -347,7 +347,6 @@ function preprocess(source: string, where: { slug: string; title: string }) {
     if (directive) {
       const [, kind, args] = directive;
       const html = kind === 'ccsrc' ? renderSourceReference(args.trim(), where)
-        : kind === 'observation' ? renderObservation(args.trim(), where)
         : kind === 'include' ? renderInclude(args.trim(), where.slug)
         : kind === 'pi' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
         : kind === 'lab' ? renderLab(args, where.slug)
@@ -467,6 +466,8 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(join(OUT, 'chapters'), { recursive: true });
 for (const page of pages) writeFileSync(join(OUT, page.file), page.html);
 cpSync(join(ROOT, 'site/static'), join(OUT, 'static'), { recursive: true });
+cpSync(join(ROOT, 'node_modules/mermaid/dist/mermaid.min.js'), join(OUT, 'static/mermaid.min.js'));
+cpSync(join(ROOT, 'node_modules/mermaid/LICENSE'), join(OUT, 'static/mermaid-LICENSE.txt'));
 for (const asset of usedAssets) {
   mkdirSync(dirname(join(OUT, asset)), { recursive: true });
   cpSync(join(ROOT, asset), join(OUT, asset));

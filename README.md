@@ -2,11 +2,11 @@
 
 **沿源码，读懂 Claude Code 的工程取舍。**
 
-课程主线依据你指定的 [ChinaSiro/claude-code-sourcemap](https://github.com/ChinaSiro/claude-code-sourcemap)，固定 **2.1.88 · `a8a678cb6244e6770e1e421767ff0987a1d95549`**。按入口、状态、调用链和失败路径解读，每章至少两处固定源码依据。
+课程主线依据 [ChinaSiro/claude-code-sourcemap](https://github.com/ChinaSiro/claude-code-sourcemap)，固定 **2.1.88 · `a8a678cb6244e6770e1e421767ff0987a1d95549`**。按入口、状态、调用链和失败路径解读，每章至少两处固定源码依据。
 
 该仓库通过公开 npm 包的 source map 还原文件，是非官方整理材料；版权仍归 Anthropic，不代表官方内部仓库或官方开源授权。课程以原创分析、函数和行号索引为主，不把整份还原源码再复制到这里。
 
-原来的 **Claude Code 2.1.296** 实验与真实模型记录保留在各章末尾的可展开对照区。源码版本与实验版本明确分开：后续版本的一次观察不能直接证明 2.1.88 的行为。
+原来的 **Claude Code 2.1.296** 实验与真实模型记录保留在各章后半部的完整实验对照。源码版本与实验版本明确分开：后续版本的一次观察不能直接证明 2.1.88 的行为。
 
 ## 从这里开始
 
@@ -63,20 +63,21 @@ git clone --branch v1.5.0 https://github.com/earendil-works/pi.git ../pi-v1.5.0
 git clone --branch v0.0.79 https://github.com/anthropics/sandbox-runtime.git ../sandbox-runtime-v0.0.79
 git clone --branch v0.2.165 https://github.com/anthropics/claude-agent-sdk-python.git ../claude-agent-sdk-python-v0.2.165
 npm run map:generate
+npm run lab:source
 npm run check
 npm run build
 npm run serve
 ```
 
-可分别用 `CC_SOURCE_DIR`、`MOX_SRC`、`PI_SRC`、`SRT_SRC`、`SDKPY_SRC` 指定本地路径。还原文件并不是完整可重新构建的开发仓库，本课程不安装或执行其中的 CLI。
+可分别用 `CC_SOURCE_DIR`、`MOX_SRC`、`PI_SRC`、`SRT_SRC`、`SDKPY_SRC` 指定本地路径。还原文件并不是完整可重新构建的开发仓库，本课程不安装或执行其中的 CLI；局部源码实验仅在隔离测试端口下执行审核过的函数。
 
 ## 目录
 
 | 路径 | 内容 |
 | --- | --- |
 | `course/` | 以 2.1.88 源码为主的正文、目录和证据定位点 |
-| `observations/` | 2.1.296 的独立实验正文，网页以折叠区显示 |
-| `lab/`、`labs/` | 原实验台与录制分析；`sourcemap.ts` 校验源码来源 |
+| `observations/` | 2.1.296 的独立实验正文，网页完整展示并加入本页目录 |
+| `lab/`、`labs/` | 原实验台与录制分析；8 组还原源码函数实验；`sourcemap.ts` 校验源码来源 |
 | `engineering/` | 一份导图数据与可编辑 `.canvas` |
 | `docs/` | Mermaid 工程地图与解读方法 |
 | `site/` | 阅读站、源码索引、面试题库和可缩放工程地图 |
@@ -88,3 +89,21 @@ npm run serve
 ## 原始图标
 
 左上角及 favicon 使用 Anthropic 官方 Claude Code VS Code 扩展图标；来源和文件哈希记录于 `site/static/brand-source.json`。此仓库是个人工程解读项目。
+
+## 工程阅读与动手实验
+
+14 章均有源码推导、反例、练习与动手目标，2.1.296 的完整实验在正文中分区呈现。Mermaid 随网站构建到本地，不依赖 CDN；机制图会直接渲染，支持深浅主题。
+
+```bash
+npm run lab:source
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs lifecycle
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs prompt
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs partition
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs memory
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs compact
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs permissions
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs io
+node --disable-warning=ExperimentalWarning labs/engineering/run.mjs sdk
+```
+
+这些实验从固定 Git 对象与已核对的 source map 提取原始函数体，运行在显式测试端口下；不保存或再分发函数源码。每组输出列明 fake 依赖与验证范围。它们检验局部行为，不代表完整 CLI、全部 feature 分支或真实模型集成通过。

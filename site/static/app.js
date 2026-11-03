@@ -155,3 +155,23 @@ for (const el of $$('.trace-player')) {
   });
   show(0);
 }
+
+// Render locally bundled Mermaid diagrams. No CDN and no network access is required.
+// Keep the original source for copying and for re-rendering after a theme change.
+const lessonDiagrams = [...document.querySelectorAll('pre.mermaid')].map(el => ({ el, source: el.textContent }));
+let diagramRender = Promise.resolve();
+function renderLessonDiagrams() {
+  diagramRender = diagramRender.catch(() => {}).then(async () => {
+    if (!lessonDiagrams.length || !window.mermaid) return;
+    const dark = document.documentElement.dataset.theme === 'dark';
+    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'neutral', themeVariables: { fontSize: '14px' }, fontFamily: 'system-ui, sans-serif', flowchart: { htmlLabels: false, useMaxWidth: true, rankSpacing: 20, nodeSpacing: 24, padding: 8 }, sequence: { useMaxWidth: true } });
+    for (const { el, source } of lessonDiagrams) {
+      el.removeAttribute('data-processed'); el.textContent = source;
+      try { await window.mermaid.run({ nodes: [el] }); el.closest('figure').classList.remove('diagram-error'); }
+      catch { el.textContent = source; el.closest('figure').classList.add('diagram-error'); }
+    }
+  });
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderLessonDiagrams);
+else renderLessonDiagrams();
+document.querySelector('.theme-toggle')?.addEventListener('click', renderLessonDiagrams);

@@ -12,12 +12,14 @@
     "check": "node site/build.ts --check",
     "typecheck": "npx -y -p typescript@5.9.3 -p @types/node@22 tsc -p tsconfig.json",
     "setup:source": "node scripts/setup-sourcemap.mjs",
-    "map:generate": "node scripts/engineering-map.mjs --write"
+    "map:generate": "node scripts/engineering-map.mjs --write",
+    "lab:source": "node --disable-warning=ExperimentalWarning labs/engineering/run.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.296",
     "@types/node": "^22.20.5",
-    "markdown-it": "14.1.0",
+    "markdown-it": "14.3.3",
+    "mermaid": "11.17.2",
     "shiki": "3.13.0"
   }
 }

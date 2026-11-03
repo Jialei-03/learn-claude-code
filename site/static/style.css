@@ -450,3 +450,12 @@ figure:hover .copy, .copy:focus-visible, .copy.done { opacity: 1; }
 .source-hero { padding: 28px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--bg-soft); }
 .source-hero p { margin: 0; font: 12px/1.8 var(--mono); color: var(--muted); }
 .source-hero pre { margin: 24px 0; font: 15px/1.9 var(--mono); color: var(--ink-2); white-space: pre-wrap; }
+
+/* Diagrams are content, with a readable source fallback if JavaScript is unavailable. */
+.lesson-diagram { border: 1px solid var(--line); border-radius: 10px; padding: 22px 14px 12px; background: var(--bg-soft); overflow-x: auto; }
+.lesson-diagram pre.mermaid { background: transparent; padding: 0; margin: 0; text-align: center; white-space: pre; font-size: 13px; }
+.lesson-diagram .mermaid svg { min-width: 320px; width: 100%; height: auto; }
+.lesson-diagram figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 14px; }
+.lesson-diagram.diagram-error figcaption::after { content: ' · 图形未加载，保留可复制的原始定义'; }
+
+.tp-btn.primary:hover:not(:disabled) { color: var(--bg); background: var(--ink-2); border-color: var(--ink-2); }

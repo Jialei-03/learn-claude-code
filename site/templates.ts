@@ -76,6 +76,7 @@ ${toc}
 </div>
 ${searchDialog()}
 <div class="scrim" hidden></div>
+<script defer src="${base}static/mermaid.min.js"></script>
 <script type="module" src="${base}static/app.js"></script>
 </body>
 </html>`;
@@ -156,7 +157,7 @@ session · hooks · permissions</pre><p><a href="map.html">打开工程思维导
 
 <section class="quickstart">
   <h2>先修课</h2>
-  <p>这门课假设你学过（或者手边有）<a href="https://github.com/Jialei-03/learn-pi-agent">Learn Pi Agent</a>：Agent 循环、工具、上下文、会话这些概念那里有从零的实现。先准备指定还原源码，再读每章调用链。原有真实模型录制保留在可展开的 2.1.296 对照分区，构建只做离线分析，不启动模型服务。</p>
+  <p>这门课假设你学过（或者手边有）<a href="https://github.com/Jialei-03/learn-pi-agent">Learn Pi Agent</a>：Agent 循环、工具、上下文、会话这些概念那里有从零的实现。先准备指定还原源码，再读每章调用链。各章后半部完整展示 2.1.296 的独立实验与录制，源码主线和实验版本分区说明。构建运行局部函数与离线分析，不启动模型服务。</p>
   <pre><code>git clone ${REPO}.git
 cd learn-claude-code &amp;&amp; npm install
 npm run setup:source
