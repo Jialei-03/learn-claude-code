@@ -1,0 +1,8 @@
+[
+ {
+  "file": "mox-illustrations/mox-blackbox-lab.png",
+  "model": "gpt-5.6-sol (Codex image_generation)",
+  "reference": "assets/mox-illustrations/mox-reference-sheet.png",
+  "prompt": "Use the provided image only as the visual identity reference for Mox. Create a new educational illustration for a Chinese coding-agent engineering course. Mox is the sole protagonist: rounded white robot (80% white), black oval face with two white eyes, short black hands and feet, tiny orange lamp on its head, compact black module on its right shoulder with a tiny X. Pure WHITE background, expressive black hand-drawn ink outlines, generous negative space, tiny orange signal accents only. Calm, curious, adult editorial illustration; not childish, not a slide, not a screenshot, not a dense infographic. Mox performs the central action using its right shoulder module and head lamp. No ocean or underwater motifs. Wide composition 3:2. Use only the exact English labels specified. On a long workbench sits a sealed black box labelled 'Claude Code'; its lid is closed with a strip of tape labelled 'no source', and Mox does not open it. A cable runs from the box to a small cloud-shaped block on the right labelled 'model'. In the middle of that cable, Mox has clipped a small listening device from its shoulder arm and is attentively listening with its head tilted; a long paper tape labelled 'requests' scrolls out of the device onto the bench and curls on the floor. On the left, Mox has just slipped a tiny paper tag labelled 'CANARY' into a folder that is going into the box. An open notebook labelled 'docs' lies beside Mox. Mox's head lamp glows steadily orange. The black box has no face and no creature; do not draw any orange pixel creature."
+ }
+]
