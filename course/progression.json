@@ -1,38 +1,37 @@
 {
   "name": "coda",
   "repo": "https://github.com/Jialei-03/learn-claude-code",
-  "description": "从可反驳的源码阅读开始，用十四步做出能修复真实项目的原创教学 Agent。",
+  "description": "每一章读懂 Claude Code 的一个机制，再用最小的代码在 coda 里实现它：十四步之后，coda 能在真实项目里读写文件、运行测试、连接 MCP、调用子 Agent，并在无界面模式下被脚本驱动。",
   "chapters": [
     {
       "n": 0,
       "slug": "00-method",
-      "title": "证据与入口：先确定要重建什么",
+      "title": "导读：怎样读五十万行还原源码",
       "dependsOn": null,
       "implementation": [
-        "runtime/files.mjs#workspacePath",
-        "runtime/journal.mjs#Journal"
+        "runtime/files.mjs#workspacePath"
       ],
       "experiment": "labs/chapters/00-method.mjs",
-      "build": "建立可复查的源码与实验边界",
-      "connection": "把源码文本、入口可达性、局部执行和端到端结果分开，给后面所有实验提供可追溯的基础。"
+      "build": "准备固定版本的源码，给还原源码做一次体检",
+      "connection": "coda 的所有文件访问都经过 workspacePath；后面每一章在 coda 上加一个对应 Claude Code 机制的模块。"
     },
     {
       "n": 1,
       "slug": "01-one-run",
-      "title": "主循环：让一次任务正确地结束",
+      "title": "主循环：queryLoop 的状态与出口",
       "dependsOn": "00-method",
       "implementation": [
         "coda/src/engine.mjs#Engine",
         "coda/src/engine.mjs#scripted"
       ],
       "experiment": "labs/chapters/01-one-run.mjs",
-      "build": "实现可取消、有界且不执行截断计划的循环",
-      "connection": "接过第 0 章的证据约束，写出所有后续能力共同使用的 Engine。工具、权限和持久化都通过这里的边界接入。"
+      "build": "实现带 State 与 transition 的主循环：续写、Stop Hook、排队与中止",
+      "connection": "第 0 章解决怎么读；本章写出所有后续能力共同挂载的 Engine，请求、工具、Hook、压缩都挂在它的回调和 State 上。"
     },
     {
       "n": 2,
       "slug": "02-request",
-      "title": "请求构造：从提示来源到模型协议",
+      "title": "请求构造：模型每一轮收到的是什么",
       "dependsOn": "01-one-run",
       "implementation": [
         "coda/src/request.mjs#effectivePrompt",
@@ -40,13 +39,13 @@
         "coda/src/request.mjs#anthropicModel"
       ],
       "experiment": "labs/chapters/02-request.mjs",
-      "build": "为 Engine 接入稳定、可检查的请求投影",
-      "connection": "循环只管什么时候请求；本章增加 request 回调，让提示、历史和工具定义通过同一个边界进入模型。"
+      "build": "提示优先级、上下文快照与两个槽位、缓存块与断点、缓存断因诊断",
+      "connection": "循环只管何时请求；本章让每个请求的各部分按“多久变一次”排好，会变的追加在末尾。"
     },
     {
       "n": 3,
       "slug": "03-tools",
-      "title": "工具执行：并发、校验与文件版本",
+      "title": "工具执行：分批、关卡与文件版本",
       "dependsOn": "02-request",
       "implementation": [
         "coda/src/tools.mjs#partition",
@@ -54,26 +53,26 @@
         "coda/src/files.mjs#codingTools"
       ],
       "experiment": "labs/chapters/03-tools.mjs",
-      "build": "接入真实文件读写与有顺序屏障的工具流水线",
-      "connection": "上一章让模型知道工具；本章让调用真的产生受控效果，并把失败作为带 id 的结果交回循环。"
+      "build": "Toolset 流水线（相邻分批、校验→Hook→权限→执行→结果整形）与带版本检查的文件工具",
+      "connection": "模型已经知道有哪些工具；本章让调用按受控顺序执行，失败变成带 id 的结果交回循环。"
     },
     {
       "n": 4,
       "slug": "04-memory",
-      "title": "项目指令：发现、递归与最终注入",
+      "title": "项目记忆：从 CLAUDE.md 到请求里的第一条消息",
       "dependsOn": "03-tools",
       "implementation": [
         "coda/src/memory.mjs#loadMemories",
         "coda/src/memory.mjs#memoryPrompt"
       ],
       "experiment": "labs/chapters/04-memory.mjs",
-      "build": "给同一条请求装入有来源的项目指令",
-      "connection": "Engine 和文件工具已能工作；本章让它知道这个项目要求什么，并保留每份指令的来源。"
+      "build": "分层发现、@ 引用展开、按需加载的子目录说明、第一条用户消息里的 system-reminder",
+      "connection": "上一章让工具产生受控效果；本章让 Agent 知道项目的规矩，并说清每份指令从哪里来、放在请求的哪个位置。"
     },
     {
       "n": 5,
       "slug": "05-sessions-compaction",
-      "title": "会话与压缩：保留事实，重建视图",
+      "title": "会话与压缩：文件只追加，请求靠重建",
       "dependsOn": "04-memory",
       "implementation": [
         "coda/src/session.mjs#Session",
@@ -81,111 +80,111 @@
         "coda/src/compact.mjs#Compactor"
       ],
       "experiment": "labs/chapters/05-sessions-compaction.mjs",
-      "build": "实现可分支恢复的日志与有界压缩",
-      "connection": "前面消息只存在内存里；本章把它们变成持久事实，同时允许模型使用压缩后的请求副本。"
+      "build": "只追加的会话树（恢复整理、压缩边界）和 Compactor（微压缩、触发线、摘要、重建、熔断）",
+      "connection": "Engine 的消息只在内存里；本章把它们变成可恢复的持久记录，并在上下文快满时只改请求里的视图，不改记录。"
     },
     {
       "n": 6,
       "slug": "06-permissions",
-      "title": "权限：谁有权决定一次效果",
+      "title": "权限：一次调用怎样得到 allow、ask 或 deny",
       "dependsOn": "05-sessions-compaction",
       "implementation": [
         "coda/src/permissions.mjs#ruleStage",
         "coda/src/permissions.mjs#permissionGate"
       ],
       "experiment": "labs/chapters/06-permissions.mjs",
-      "build": "把工具执行前的最终授权变成显式接口",
-      "connection": "工具先完成参数校验，再把具体调用交给权限 gate；读取、编辑、未知效果和无界面等待各有明确结果。"
+      "build": "实现三段权限决策：规则与安全检查、模式、询问",
+      "connection": "Toolset 在参数校验和钩子之后把调用交给 gate；gate 按 deny > ask > bypass > allow 给出结论，ask 再交给用户，无界面时按拒绝处理。"
     },
     {
       "n": 7,
       "slug": "07-hooks",
-      "title": "Hook：扩展流水线的输入与失败",
+      "title": "Hook：事件、匹配与失败时放行",
       "dependsOn": "06-permissions",
       "implementation": [
         "coda/src/hooks.mjs#Hooks",
         "coda/src/hooks.mjs#commandHook"
       ],
       "experiment": "labs/chapters/07-hooks.mjs",
-      "build": "接入真实 Hook 子进程并重检改写参数",
-      "connection": "第 6 章已经知道谁授权；本章让团队策略在明确阶段参与处理，同时保留权限和工具验证的最终边界。"
+      "build": "Hooks 按事件和 matcher 选出 Hook，并行运行、合并结果，失败时放行；接入 Toolset 和 onStop",
+      "connection": "Hook 在校验之后、权限之前介入，只能收紧或省掉询问，推翻不了第 6 章的规则。"
     },
     {
       "n": 8,
       "slug": "08-mcp",
-      "title": "MCP：真实连接、发现、调用与退出",
+      "title": "MCP：配置、连接、包装与退出",
       "dependsOn": "07-hooks",
       "implementation": [
         "runtime/rpc.mjs#StdioRpc",
         "coda/src/mcp.mjs#connectMcp"
       ],
       "experiment": "labs/chapters/08-mcp.mjs",
-      "build": "让同一个 Agent 接入本地 stdio 工具服务",
-      "connection": "模型循环不关心工具来自哪里；本章把外部工具变成 Toolset 能消费的定义，并承担连接的整个生命周期。"
+      "build": "接入真实 stdio 服务器：配置合并与批准、有期限的握手、工具包装、结果转换、取消与信号升级式退出",
+      "connection": "第 7 章的 Hook 管调用前后；本章让外部工具以普通工具对象进入同一条流水线，并承担连接的整个生命周期。"
     },
     {
       "n": 9,
       "slug": "09-skills",
-      "title": "Skill：描述、正文与执行范围",
+      "title": "Skill：常驻一行目录，调用时才渲染正文",
       "dependsOn": "08-mcp",
       "implementation": [
         "coda/src/skills.mjs#parseSkill",
         "coda/src/skills.mjs#Skills"
       ],
       "experiment": "labs/chapters/09-skills.mjs",
-      "build": "为同一项目加入按名称发现与展开的工作方法",
-      "connection": "工具解决能做什么，Skill 提供何时以及怎样做；本章将元数据与正文分开给模型消费。"
+      "build": "Skills：发现与目录预算、两扇门共用的展开、授权与 fork、压缩后的回忆",
+      "connection": "第 8 章接进来的是工具，Skill 带来的是做法：目录一行常驻，正文按需进入，还能替用户预先批准工具，所以调用本身要先批准。"
     },
     {
       "n": 10,
       "slug": "10-subagents",
-      "title": "子 Agent：缩小工具池并独立记账",
+      "title": "子 Agent：一张任务单进去，一份报告出来",
       "dependsOn": "09-skills",
       "implementation": [
         "coda/src/subagents.mjs#runChild"
       ],
       "experiment": "labs/chapters/10-subagents.mjs",
-      "build": "把只读探索接入同一个 Agent 系统",
-      "connection": "用前面相同的 Engine 与 Toolset 创建子任务，明确它继承什么、隔离什么，以及取消从哪条信号链传递。"
+      "build": "把子 Agent 做成带定义、三层工具池、独立文件版本记录和后台停止的模块",
+      "connection": "Engine 与 Toolset 不变，子 Agent 换的是名单、历史和取消信号。"
     },
     {
       "n": 11,
       "slug": "11-sandbox",
-      "title": "沙箱：把规则落到真实进程",
+      "title": "沙箱：规则变成配置，配置变成内核的拒绝",
       "dependsOn": "10-subagents",
       "implementation": [
         "runtime/sandbox.mjs#sandboxCommand",
         "runtime/sandbox.mjs#runSandboxed"
       ],
       "experiment": "labs/chapters/11-sandbox.mjs",
-      "build": "把工具效果边界延伸到操作系统执行",
-      "connection": "权限决定是否接受调用，本章另做平台配置与系统探针，验证允许和禁止的效果是否真实发生。"
+      "build": "权限规则 → 沙箱策略 → seatbelt/bwrap 命令，加上进沙箱的判断、代理的域名决策，没有后端就不运行",
+      "connection": "第 6 章的 Edit/Read/WebFetch 规则变成可写、禁写、禁读和域名名单；sandboxDecision 决定命令是否进沙箱；没有后端时直接拒绝运行。"
     },
     {
       "n": 12,
       "slug": "12-headless-sdk",
-      "title": "无界面运行：输入、确认与 EOF",
+      "title": "无界面运行：请求配对、EOF 与取消",
       "dependsOn": "11-sandbox",
       "implementation": [
         "coda/src/io.mjs#ControlIO",
         "coda/src/io.mjs#normalizeInput"
       ],
       "experiment": "labs/chapters/12-headless-sdk.mjs",
-      "build": "用真实子进程承接 Agent 的控制面",
-      "connection": "前面从函数调用驱动 Agent，本章让脚本通过 JSONL 驱动相同实现，并处理未完成确认和输入结束。"
+      "build": "带 id 的审批请求、EOF 与取消的收场、一行一条 JSON 的读写，并用真实子进程验证",
+      "connection": "前面从函数调用驱动 coda，本章让宿主脚本通过 JSONL 驱动同一实现，并处理答错 id、迟到回答、取消和输入结束。"
     },
     {
       "n": 13,
       "slug": "13-synthesis",
-      "title": "总装：修复一个真正失败的项目",
+      "title": "总装与对照：十二个机制挂在主循环哪里",
       "dependsOn": "12-headless-sdk",
       "implementation": [
         "coda/src/app.mjs#createCoda",
         "coda/src/engine.mjs#collect"
       ],
       "experiment": "labs/chapters/13-synthesis.mjs",
-      "build": "把全课部件接成可运行的 Coding Agent",
-      "connection": "复用所有前章接口，以真实项目、真实测试和真实 MCP 连接验收完整任务，最后重开会话检查恢复。"
+      "build": "createCoda 总装，cli.mjs 按结局给退出码",
+      "connection": "以真实测试、Hook、MCP、会话重开、压缩写回和退出码验收；对照 Claude Code / Pi / mox / coda。"
     }
   ]
 }

@@ -1,6 +1,7 @@
 // 第 7 章：场景实验的分析（离线）。
-//   node labs/ch07/scenario.ts [steps|where|envrule]
+//   node labs/ch07/scenario.ts [steps|blocked|where|envrule]
 //   steps   —— 模型的每一步，以及是哪一道关在起作用
+//   blocked —— 钩子对模型说了什么，模型随后做了什么、事后怎么说
 //   where   —— 每个钩子的输出，最终出现在发给模型的请求的什么位置
 //   envrule —— 换成 Read(./.env) 的 deny 规则之后，三种读法的结果
 import { loadRecording } from '../../lab/cc.ts';
@@ -25,6 +26,22 @@ if (part === 'steps') {
   calls(r).forEach((c, i) => console.log(`| ${i + 1} | ${show(c)}${c.input.dangerouslyDisableSandbox ? '（dangerouslyDisableSandbox）' : ''} | ${c.isError ? '✗' : '✓'} | ${guard(c)} |`));
   const stop = r.hooks.filter((h: any) => h.event === 'Stop').map((h: any) => `stop_hook_active=${h.payload.stop_hook_active}`);
   console.log(`\nStop 钩子触发 ${stop.length} 次：${stop.join('，')}。`);
+}
+
+if (part === 'blocked') {
+  const r = load('scenario');
+  const results: string[] = r.events.filter((e: any) => e.type === 'user' && Array.isArray(e.message.content)).flatMap((e: any) => e.message.content.filter((b: any) => b.type === 'tool_result' && b.is_error).map((b: any) => (typeof b.content === 'string' ? b.content : JSON.stringify(b.content))));
+  const told = results.find(x => x.includes('hook error'))!.replace(/\[sh [^\]]*block-dangerous\.sh\]/, '[sh block-dangerous.sh]').trim();
+  const all = calls(r);
+  const first = all.findIndex((c: any) => c.name === 'Bash' && String(c.input.command).includes('rm -rf build'));
+  const retries = all.slice(first + 1).filter((c: any) => c.name === 'Bash' && /\bbuild\b/.test(String(c.input.command)) && /\b(rm|rmdir|mv|delete|rmtree)\b/.test(String(c.input.command)) && !String(c.input.command).includes('rm -rf build'));
+  const summary: string = r.hooks.find((h: any) => h.event === 'Stop').payload.last_assistant_message;
+  const said = summary.split('\n').find(line => line.includes('按钩子提示'))!;
+  console.log('钩子对模型说的（工具结果，is_error）：\n');
+  console.log(`> ${told}\n`);
+  console.log(`模型随后用 ${retries.length} 种别的写法试着删除 build：${retries.map((c: any) => `\`${short(String(c.input.command), 34).replace(/`/g, "'")}\``).slice(0, 4).join('、')}……\n`);
+  console.log('最后在总结里写道：\n');
+  console.log(`> ${said}`);
 }
 
 if (part === 'where') {

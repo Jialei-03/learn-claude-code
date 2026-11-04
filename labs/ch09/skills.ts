@@ -1,5 +1,9 @@
 // 第 9 章：Skill 的目录、调用和渲染（离线分析）。
-//   node labs/ch09/skills.ts [listing|invoke|render]
+//   node labs/ch09/skills.ts [listing|invoke|shapes|render]
+//     listing  模型的第一个请求里有什么、没有什么
+//     invoke   五种设置下，Skill 是怎样进入对话的
+//     shapes   三扇门（模型调用、用户输入、旧式命令）在会话文件里各留下哪几条记录
+//     render   占位符、动态注入在三种进入方式下的结果
 import { loadRecording } from '../../lab/cc.ts';
 import { calls, short } from '../ch06/calls.ts';
 
@@ -36,6 +40,49 @@ if (part === 'invoke') {
     const readRaw = list.some(c => c.name === 'Read' && String(c.input.file_path).endsWith('SKILL.md'));
     const how = readRaw ? '模型自己用 Read 读了 SKILL.md 原文' : bodyAt?.startsWith('messages[0]') ? '渲染后放进第一条用户消息' : bodyAt ? '渲染后附在 Skill 工具结果的同一条用户消息里' : '—';
     console.log(`| ${label} | ${tool} | ${how} |`);
+  }
+}
+
+if (part === 'shapes') {
+  // 从会话文件里挑出“Skill 进入对话”的那一段：每个条目一行
+  const oneLine = (text: string, n = 56) => { const t = text.replace(/\s+/g, ' ').trim(); return (t.length > n ? `${t.slice(0, n)}…` : t).replace(/\|/g, '\\|'); };
+  const describeEntry = (e: any): [string, string] | undefined => {
+    if (e.type === 'attachment') {
+      const a = e.attachment;
+      if (a.type === 'skill_listing') return ['附件 skill_listing', `${a.skillCount} 个 Skill 的目录`];
+      if (a.type === 'command_permissions') return ['附件 command_permissions', `allowedTools = ${JSON.stringify(a.allowedTools)}`];
+      return undefined;
+    }
+    const content = e.message?.content;
+    if (e.type === 'user' && typeof content === 'string') return ['用户消息', oneLine(content)];
+    const blocks: any[] = Array.isArray(content) ? content : [];
+    if (e.type === 'user') {
+      const result = blocks.find(b => b.type === 'tool_result');
+      if (result) return ['用户消息 · tool_result', oneLine(String(result.content))];
+      const text = blocks.find(b => b.type === 'text');
+      if (text) return [e.isMeta ? '用户消息 · isMeta（正文）' : '用户消息', `${oneLine(text.text, 40)}（共 ${text.text.match(/\[共 (\d+) 字符\]$/)?.[1] ?? text.text.length} 字符）`];
+    }
+    if (e.type === 'assistant') {
+      const use = blocks.find(b => b.type === 'tool_use');
+      if (use) return ['助手 · tool_use', `${use.name} ${JSON.stringify(use.input)}`];
+    }
+    return undefined;
+  };
+  const runs: [string, string, number][] = [['auto', '模型调用（Skill 工具）', 1], ['slash', '用户输入 /release-notes v2.0', 1], ['command', '用户输入 /greet 小明（旧式命令）', 2]];
+  for (const [name, label, bodies] of runs) {
+    console.log(`**${label}**\n`);
+    console.log('| 顺序 | 类型 | 内容 |');
+    console.log('| --- | --- | --- |');
+    let seenBodies = 0, i = 0, done = false;
+    for (const e of load(name).transcripts[0].entries) {
+      const row = describeEntry(e);
+      if (!row) continue;
+      if (done) break;
+      console.log(`| ${++i} | ${row[0]} | ${row[1]} |`);
+      if (row[0].includes('isMeta')) seenBodies++;
+      if (seenBodies >= bodies && row[0] === '附件 command_permissions') done = true;
+    }
+    console.log();
   }
 }
 

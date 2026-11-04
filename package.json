@@ -12,7 +12,6 @@
     "check": "node site/build.ts --check",
     "typecheck": "npx -y -p typescript@5.9.3 -p @types/node@22 tsc -p tsconfig.json",
     "setup:source": "node scripts/setup-sourcemap.mjs",
-    "map:generate": "node scripts/engineering-map.mjs --write",
     "lab:source": "node --disable-warning=ExperimentalWarning labs/engineering/run.mjs",
     "lesson": "node scripts/verify-course.mjs",
     "verify:course": "node scripts/verify-course.mjs",

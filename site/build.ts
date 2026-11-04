@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 import { createHighlighter } from 'shiki';
 import { CC, CC_SOURCE, OSS, PI, chapters, parts, type OssName } from '../course/syllabus.ts';
-import { layout, homePage, interviewPage, moxMark, sourceIndexPage, workshopPage, type PageMeta } from './templates.ts';
+import { layout, homePage, interviewPage, mapPage, moxMark, sourceIndexPage, workshopPage, type PageMeta } from './templates.ts';
 
 import { sourceNotes } from '../scripts/source-notes.mjs';
 import { SOURCE_DIR, verifySourcemap } from '../lab/sourcemap.ts';
@@ -29,7 +29,7 @@ import { SOURCE_DIR, verifySourcemap } from '../lab/sourcemap.ts';
 const SOURCE_REFERENCES = verifySourcemap();
 
 import { buildCourseRuntime } from '../scripts/course-runtime.mjs';
-import { engineeringMap } from '../scripts/engineering-map.mjs';
+import { courseMap } from '../scripts/course-map.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const COURSE = buildCourseRuntime(ROOT);
@@ -39,7 +39,11 @@ const OUT = join(ROOT, 'site/dist');
 const PI_SRC = process.env.PI_SRC ?? join(ROOT, '../pi-v1.5.0');
 // learn-pi-agent：mox 和扩展的兼容实现都在那里，用 @mox 引用
 const MOX_SRC = process.env.MOX_SRC ?? join(ROOT, '../learn-pi-agent');
-const CHECK_ONLY = process.argv.includes('--check');
+const MOX_COMMIT = (JSON.parse(readFileSync(join(ROOT, 'study.lock.json'), 'utf8')).sources as { repo: string; commit: string }[])
+  .find(s => s.repo.includes('learn-pi-agent'))!.commit;
+const CHECK_ONLY = process.argv.includes('--check') || process.argv.includes('--only');
+// --only 03-tools：只渲染一章（写作时快速检查，不写文件）
+const ONLY = process.argv.includes('--only') ? process.argv[process.argv.indexOf('--only') + 1] : undefined;
 const errors: string[] = [];
 
 // ── Pi 源码版本校验：摘录必须来自固定的提交 ──────────────────────────
@@ -122,11 +126,26 @@ function findPySymbol(lines: string[], name: string): [number, number] | undefin
   return undefined;
 }
 
+/** 还原源码：总是从固定提交的 Git 对象读取，工作区里的改动不会混进课程。 */
+const ccFiles = new Map<string, string | undefined>();
+function readCc(file: string): string | undefined {
+  if (!ccFiles.has(file)) {
+    try { ccFiles.set(file, execFileSync('git', ['-C', SOURCE_DIR, 'show', `${CC_SOURCE.commit}:${file}`], { encoding: 'utf8', maxBuffer: 8_000_000, stdio: ['ignore', 'pipe', 'ignore'] })); }
+    catch { ccFiles.set(file, undefined); }
+  }
+  return ccFiles.get(file);
+}
+/** `@cc query.ts#queryLoop` 是 `restored-src/src/query.ts` 的简写。 */
+const ccPath = (file: string) => file.startsWith('restored-src/') ? file : `restored-src/src/${file}`;
+
 function excerpt(base: string, spec: string, where: string): Excerpt | undefined {
-  const [file, anchor = ''] = spec.split('#');
-  const path = join(base, file);
-  if (!existsSync(path)) { errors.push(`${where}: 找不到文件 ${file}`); return; }
-  const lines = readFileSync(path, 'utf8').split('\n');
+  const [rawFile, anchor = ''] = spec.split('#');
+  const file = base === SOURCE_DIR ? ccPath(rawFile) : rawFile;
+  let text: string | undefined;
+  if (base === SOURCE_DIR) text = readCc(file);
+  else if (existsSync(join(base, file))) text = readFileSync(join(base, file), 'utf8');
+  if (text === undefined) { errors.push(`${where}: 找不到文件 ${file}`); return; }
+  const lines = text.split('\n');
   let range: [number, number] | undefined;
   const lineMatch = anchor.match(/^L(\d+)(?:-L(\d+))?$/);
   // region:名字 —— 源码里用 `// #region 名字` 和 `// #endregion` 标出的一段（会随代码移动，不怕行号变化）
@@ -147,14 +166,14 @@ function excerpt(base: string, spec: string, where: string): Excerpt | undefined
 /** 摘录的同时记录下来，生成“源码索引”页面。 */
 const citations: { source: string; chapter: string; title: string; file: string; start: number; end: number; url: string }[] = [];
 
-function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss', args: string, where: { slug: string; title: string }) {
+function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss' | 'cc', args: string, where: { slug: string; title: string }) {
   // @oss 的第一个参数是组件名
   const words = args.trim().split(/\s+/);
   const oss = kind === 'oss' ? words.shift() as OssName : undefined;
   if (oss && !OSS[oss]) { errors.push(`${where.slug}: 未知的开源组件 ${oss}`); return ''; }
   const [spec, ...rest] = words;
   const opts = Object.fromEntries(rest.map(o => o.split('=')).map(([k, v]) => [k, v ?? 'true']));
-  const ex = excerpt(oss ? ossDir(oss) : kind === 'pi' ? PI_SRC : kind === 'mox' ? MOX_SRC : ROOT, spec, where.slug);
+  const ex = excerpt(oss ? ossDir(oss) : kind === 'cc' ? SOURCE_DIR : kind === 'pi' ? PI_SRC : kind === 'mox' ? MOX_SRC : ROOT, spec, where.slug);
   if (!ex) return '';
   const hl = new Set<number>();
   for (const part of (opts.hl ?? '').split(',').filter(Boolean)) {
@@ -164,18 +183,23 @@ function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss', args: string, where:
   const lineCount = ex.end - ex.start + 1;
   const url = oss
     ? `${OSS[oss].repo}/blob/${OSS[oss].commit}/${ex.file}#L${ex.start}-L${ex.end}`
+    : kind === 'cc'
+    ? `${CC_SOURCE.repo}/blob/${CC_SOURCE.commit}/${ex.file}#L${ex.start}-L${ex.end}`
     : kind === 'pi'
     ? `${PI.repo}/blob/${PI.commit}/${ex.file}#L${ex.start}-L${ex.end}`
     : kind === 'mox'
-      ? `https://github.com/Jialei-03/learn-pi-agent/blob/eb8d16bfc64d5ee373e5a311a322feb301b02066/${ex.file}#L${ex.start}-L${ex.end}`
+      ? `https://github.com/Jialei-03/learn-pi-agent/blob/${MOX_COMMIT}/${ex.file}#L${ex.start}-L${ex.end}`
       : `https://github.com/Jialei-03/learn-claude-code/blob/main/${ex.file}#L${ex.start}-L${ex.end}`;
-  if (kind === 'pi' || oss) citations.push({ source: oss ?? 'pi', chapter: where.slug, title: where.title, file: ex.file, start: ex.start, end: ex.end, url });
+  if (kind === 'pi' || kind === 'cc' || oss) citations.push({ source: oss ?? (kind === 'cc' ? 'claude-code' : 'pi'), chapter: where.slug, title: where.title, file: ex.file, start: ex.start, end: ex.end, url });
   const badge = oss ? `<span class="src-badge oss">${OSS[oss].label} ${OSS[oss].version} · ${OSS[oss].license}</span>`
+    : kind === 'cc' ? `<span class="src-badge cc">Claude Code ${CC_SOURCE.version}</span>`
     : kind === 'pi' ? `<span class="src-badge pi">Pi ${PI.version}</span>` : kind === 'mox' ? '<span class="src-badge mox">mox</span>' : '<span class="src-badge mox">本课</span>';
   const label = opts.title ? `<span class="src-title">${esc(decodeURIComponent(opts.title))}</span>` : '';
   const collapsed = opts.collapse === 'true' || (opts.collapse !== 'false' && lineCount > 60);
+  // 还原源码的摘录只在本地构建时从你自己的固定 checkout 读取；仓库里只保存文件、符号和行号
+  const display = kind === 'cc' ? ex.file.replace(/^restored-src\/src\//, '') : ex.file;
   return `<figure class="src ${kind}${collapsed ? ' collapsible collapsed' : ''}">
-<figcaption>${badge}<a class="src-path" href="${url}" target="_blank" rel="noopener">${esc(ex.file)}<span class="src-lines">:${ex.start}${ex.end > ex.start ? '–' + ex.end : ''}</span></a>${label}<button class="copy" type="button" aria-label="复制代码">复制</button></figcaption>
+<figcaption>${badge}<a class="src-path" href="${url}" target="_blank" rel="noopener">${esc(display)}<span class="src-lines">:${ex.start}${ex.end > ex.start ? '–' + ex.end : ''}</span></a>${label}<button class="copy" type="button" aria-label="复制代码">复制</button></figcaption>
 ${highlight(ex.code, langOf(ex.file), { start: ex.start, hl })}
 ${collapsed ? `<button class="expand" type="button">展开全部 ${lineCount} 行</button>` : ''}
 </figure>`;
@@ -321,12 +345,6 @@ const CALLOUT_LABEL: Record<string, string> = { note: '说明', warn: '注意', 
 const interviews: { chapter: string; title: string; question: string; answer: string }[] = [];
 
 function preprocess(source: string, where: { slug: string; title: string }) {
-  source = source.replace(/^@observation (.+)$/gm, (_, slug: string) => {
-    if (slug !== where.slug) { errors.push(`观察版本章节不匹配 ${slug}`); return ''; }
-    const { body } = parseFrontmatter(readFileSync(join(ROOT, 'observations', `${slug}.md`), 'utf8'));
-    const marked = body.replace(/^::: interview /gm, '::: interview （观察 2.1.296）').replace(/^## /gm, '## 实验 · ');
-    return `\n## 独立实验：Claude Code ${CC.version}\n\n::: note 版本对照\n下面保留另一版本的真实录制与完整实验讲解。它用于比较行为，不作为 ${CC_SOURCE.version} 的运行证明。\n:::\n\n${marked}`;
-  });
   const lines = source.split('\n');
   const out: string[] = [];
   let fence = false;
@@ -348,7 +366,7 @@ function preprocess(source: string, where: { slug: string; title: string }) {
       continue;
     }
 
-    const directive = line.match(/^@(pi|code|mox|oss|lab|trace|figure|include|ccsrc|observation|implementation|experiment|journey)\s+(.+)$/);
+    const directive = line.match(/^@(pi|cc|code|mox|oss|lab|trace|figure|include|ccsrc|implementation|experiment|journey)\s+(.+)$/);
     if (directive) {
       const [, kind, args] = directive;
       const html = kind === 'journey' ? COURSE.journey(args.trim())
@@ -356,7 +374,7 @@ function preprocess(source: string, where: { slug: string; title: string }) {
         : kind === 'experiment' ? COURSE.experiment(args.trim(), code => highlight(code, 'json'))
         : kind === 'ccsrc' ? renderSourceReference(args.trim(), where)
         : kind === 'include' ? renderInclude(args.trim(), where.slug)
-        : kind === 'pi' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
+        : kind === 'pi' || kind === 'cc' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
         : kind === 'lab' ? renderLab(args, where.slug)
         : kind === 'trace' ? renderTrace(args, where.slug)
         : renderFigure(args, where.slug);
@@ -412,8 +430,21 @@ function parseFrontmatter(text: string) {
 
 const pages: { file: string; html: string }[] = [];
 const searchIndex: { url: string; chapter: string; title: string; section?: string; text: string }[] = [];
+/** 按小节建搜索索引：每个 h2/h3 一条，正文全文可搜（以前只索引每章前 6000 字）。 */
+function sectionIndex(html: string, url: string, chapter: string, title: string) {
+  const plain = (s: string) => s.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  const parts = html.split(/(?=<h[23][^>]*\bid=")/);
+  const rows: { url: string; chapter: string; title: string; section?: string; text: string }[] = [];
+  for (const part of parts) {
+    const head = part.match(/^<h[23][^>]*\bid="([^"]+)"[^>]*>([\s\S]*?)<\/h[23]>/);
+    const text = plain(head ? part.slice(head[0].length) : part).slice(0, 8000);
+    rows.push(head ? { url: `${url}#${head[1]}`, chapter, title, section: plain(head[2]), text } : { url, chapter, title, text });
+  }
+  return rows;
+}
 
-for (const chapter of chapters.filter(c => c.status === 'ready')) {
+
+for (const chapter of chapters.filter(c => c.status === 'ready' && (!ONLY || c.slug === ONLY))) {
   const path = join(ROOT, 'course', `${chapter.slug}.md`);
   if (!existsSync(path)) {
     if (process.env.DRAFT) { console.warn(`（草稿模式）跳过缺少的正文 ${chapter.slug}`); continue; }
@@ -422,16 +453,21 @@ for (const chapter of chapters.filter(c => c.status === 'ready')) {
   }
   const { data, body } = parseFrontmatter(readFileSync(path, 'utf8'));
   const where = { slug: chapter.slug, title: chapter.title };
-  if ((body.match(/^@ccsrc /gm) ?? []).length < 2) errors.push(`${chapter.slug}: 每章至少需要两处源码依据`);
+  if ((body.match(/^@(cc|ccsrc) /gm) ?? []).length < 2) errors.push(`${chapter.slug}: 每章至少需要两处 Claude Code 源码摘录（@cc）`);
   const headings: Heading[] = [];
   const html = renderMarkdown(preprocess(body, where), headings);
   // 站内链接：course/xx.md → xx.html
   const linked = html.replace(/href="(?:\.\/)?([0-9]{2}-[a-z0-9-]+)\.md(#[^"]*)?"/g, 'href="$1.html$2"');
   const meta: PageMeta = { chapter, frontmatter: data, headings };
   pages.push({ file: `chapters/${chapter.slug}.html`, html: layout(meta, linked) });
-  const plain = linked.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
-  searchIndex.push({ url: `chapters/${chapter.slug}.html`, chapter: `${String(chapter.n).padStart(2, '0')}`, title: chapter.title, text: plain.slice(0, 6000) });
-  for (const h of headings) searchIndex.push({ url: `chapters/${chapter.slug}.html#${h.id}`, chapter: `${String(chapter.n).padStart(2, '0')}`, title: chapter.title, section: h.text, text: '' });
+  searchIndex.push(...sectionIndex(linked, `chapters/${chapter.slug}.html`, `${String(chapter.n).padStart(2, '0')}`, chapter.title));
+}
+
+if (ONLY) {
+  if (!pages.length) errors.push(`没有这一章：${ONLY}`);
+  if (errors.length) { console.error(`检查失败，${errors.length} 个问题：\n` + errors.map(e => '  · ' + e).join('\n')); process.exit(1); }
+  console.log(`${ONLY} 检查通过：${citations.filter(c => c.source === 'claude-code').length} 处 Claude Code 摘录，${citations.filter(c => c.source === 'pi').length} 处 Pi 摘录，${interviews.length} 道面试题`);
+  process.exit(0);
 }
 
 // 检查正文里直接写的 Pi 源码链接：文件必须存在，行号不能越界
@@ -455,8 +491,14 @@ for (const page of pages) {
   }
 }
 
-const MAP = engineeringMap(ROOT);
-pages.push({ file: 'map.html', html: MAP.html });
+const MAP = courseMap({
+  title: `Claude Code ${CC_SOURCE.version}`,
+  subtitle: '这门课读过的每一段 Claude Code 源码：按章节看学习路线，按目录看覆盖了源码的哪些部分。',
+  chapters: chapters.filter(c => c.status === 'ready').map(c => ({ n: c.n, slug: c.slug, title: c.title, part: c.part.title })),
+  citations: citations.filter(c => c.source === 'claude-code'),
+  display: (file: string) => file.replace(/^restored-src\/src\//, ''),
+});
+pages.push({ file: 'map.html', html: mapPage(MAP.html) });
 pages.push({ file: 'index.html', html: homePage() });
 pages.push({ file: 'workshop.html', html: workshopPage(COURSE.overview()) });
 pages.push({ file: 'interview.html', html: interviewPage(interviews) });
@@ -467,7 +509,7 @@ if (errors.length) {
   process.exit(1);
 }
 if (CHECK_ONLY) {
-  console.log(`检查通过：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处源码引用（含还原源码索引），${interviews.length} 道面试题`);
+  console.log(`检查通过：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处 Claude Code 及开源组件摘录，${interviews.length} 道面试题`);
   process.exit(0);
 }
 
@@ -497,4 +539,4 @@ writeFileSync(join(OUT, 'engineering/engineering-map.md'), MAP.markdown);
 writeFileSync(join(OUT, 'static/search.json'), JSON.stringify(searchIndex));
 writeFileSync(join(OUT, 'course-evidence.json'), JSON.stringify(COURSE.evidence(), null, 2));
 writeFileSync(join(OUT, 'source-evidence.json'), JSON.stringify({ source: CC_SOURCE, observationVersion: CC.version, references: SOURCE_REFERENCES }, null, 2));
-console.log(`已生成 ${relative(ROOT, OUT)}：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处源码引用（含还原源码索引），${interviews.length} 道面试题`);
+console.log(`已生成 ${relative(ROOT, OUT)}：${pages.length} 个页面，${citations.filter(c => c.source === 'pi').length} 处 Pi 源码摘录，${citations.filter(c => c.source !== 'pi').length} 处 Claude Code 及开源组件摘录，${interviews.length} 道面试题`);

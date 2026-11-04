@@ -38,7 +38,7 @@ function topbar(base: string) {
     <a class="top-link" href="${base}workshop.html">实现主线</a>
     <a class="top-link" href="${base}interview.html">面试题库</a>
     <a class="top-link" href="${base}sources.html">源码索引</a>
-    <a class="top-link" href="${base}map.html">工程地图</a>
+    <a class="top-link" href="${base}map.html">源码导图</a>
     <button class="icon-btn theme-toggle" type="button" aria-label="切换深色模式"><svg class="sun" viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><svg class="moon" viewBox="0 0 24 24" width="18" height="18"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></button>
     <a class="icon-btn" href="${REPO}" target="_blank" rel="noopener" aria-label="GitHub 仓库"><svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.7c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 3 .8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.4 4.7-4.6 5 .4.3.7.9.7 1.9V21c0 .3.2.6.7.5A10 10 0 0 0 12 2z"/></svg></a>
   </div>
@@ -56,7 +56,7 @@ function sidebar(base: string, current?: string) {
     }).join('')}</ol>
   </div>`).join('');
   return `<nav class="sidebar" aria-label="课程目录"><div class="sidebar-inner">${groups}
-  <p class="nav-pin">源码 Claude Code ${CC_SOURCE.version}<br>独立实验 ${CC.version}<br>对照 <a href="${PI.repo}/tree/${PI.commit}" target="_blank" rel="noopener">Pi ${PI.version}</a> · <a href="https://github.com/Jialei-03/learn-pi-agent" target="_blank" rel="noopener">mox</a></p></div></nav>`;
+  <p class="nav-pin">源码 Claude Code ${CC_SOURCE.version}<br>录制 Claude Code ${CC.version}<br>对照 <a href="${PI.repo}/tree/${PI.commit}" target="_blank" rel="noopener">Pi ${PI.version}</a> · <a href="https://github.com/Jialei-03/learn-pi-agent" target="_blank" rel="noopener">mox</a></p></div></nav>`;
 }
 
 function searchDialog() {
@@ -134,31 +134,33 @@ export function homePage() {
   <div class="hero-copy">
     <p class="eyebrow">Agent 工程课 · 第二部<span>·</span>源码 Claude Code ${CC_SOURCE.version}</p>
     <h1>拆开 Claude Code<br><span class="hero-sub">沿源码，读懂工程取舍</span></h1>
-    <p class="hero-lead">沿固定源码逐段拆解工程机制，十四步做出自己的 coda。每章接入真实代码与独立实验，最后修复项目、运行测试并重开会话。</p>
+    <p class="hero-lead">Claude Code 的五十万行源码里，真正的 Agent 机制藏在几十个文件中。每一章挑一个具体问题，沿调用链把源码摆出来逐段讲，用真实运行的录制验证，再在 coda 里亲手实现一遍。</p>
     <div class="hero-actions">
       <a class="btn primary" href="chapters/00-method.html">开始学习</a>
       <a class="btn-link" href="workshop.html">查看完整实现主线 →</a>
     </div>
   </div>
-  <aside class="source-hero"><p>SOURCE READING · ${CC_SOURCE.version}</p><pre>CLI bootstrap
+  <aside class="source-hero"><p>SOURCE READING · ${CC_SOURCE.version}</p><pre>claude（cli.tsx）
   ↓
-query / queryLoop
-  ↓
-request → tools → context
-  ↓
-session · hooks · permissions</pre><p><a href="map.html">打开工程思维导图 →</a></p></aside>
+main.tsx ── -p ──→ print.ts
+  ↓              ↓
+REPL.tsx     QueryEngine
+  └──→ query() ←──┘
+         ↓
+请求 · 工具 · 权限 · Hook
+上下文 · 会话 · 压缩</pre><p><a href="map.html">打开源码思维导图 →</a></p></aside>
 </section>
 
 <section class="pillars">
-  <article><span class="pillar-num">01</span><h3>以源码为主线</h3><p>固定提交、函数与行号；还原文件逐字核对 sourcesContent。</p></article>
-  <article><span class="pillar-num">02</span><h3>分清证据版本</h3><p>2.1.88 源码与 2.1.296 录制分区阅读，避免混淆实现和观察。</p></article>
-  <article><span class="pillar-num">03</span><h3>逐章实现 coda</h3><p>14 份独立实验贯穿同一项目，真实读写文件、启动进程与 MCP。</p></article>
+  <article><span class="pillar-num">01</span><h3>把源码摆出来讲</h3><p>每章四到八段源码摘录，沿调用链逐段解释状态、分支和失败路径，配流程图。</p></article>
+  <article><span class="pillar-num">02</span><h3>用真实运行验证</h3><p>录制真实 Claude Code 的请求、Hook 和会话文件；能单独运行的源码函数直接拿来跑。</p></article>
+  <article><span class="pillar-num">03</span><h3>亲手实现 coda</h3><p>读懂一个机制，就在 coda 里用最小的代码实现它；每章实验都离线可跑。</p></article>
   <article><span class="pillar-num">04</span><h3>讲得出取舍</h3><p>每章附面试题和回答要点，汇总在<a href="interview.html">面试题库</a>。</p></article>
 </section>
 
 <section class="quickstart">
   <h2>先修课</h2>
-  <p>这门课假设你学过（或者手边有）<a href="https://github.com/Jialei-03/learn-pi-agent">Learn Pi Agent</a>：Agent 循环、工具、上下文、会话这些概念那里有从零的实现。先准备指定还原源码，再读每章调用链。各章后半部完整展示 2.1.296 的独立实验与录制，源码主线和实验版本分区说明。构建运行局部函数与离线分析，不启动模型服务。</p>
+  <p>这门课假设你学过（或者手边有）<a href="https://github.com/Jialei-03/learn-pi-agent">Learn Pi Agent</a>：Agent 循环、工具、上下文、会话这些概念那里有从零的实现，这里会经常拿 Pi 和 mox 做对照。所有实验离线运行，不需要 API Key。</p>
   <pre><code>git clone ${REPO}.git
 cd learn-claude-code &amp;&amp; npm ci
 npm run setup:source
@@ -206,6 +208,10 @@ export function sourceIndexPage(citations: { source: string; chapter: string; ti
   return head('源码索引 · Learn Claude Code', '课程摘录过的开源代码', '') + shell('', undefined, main);
 }
 
+export function mapPage(content: string) {
+  return head('源码思维导图 · Learn Claude Code', '课程读过的每一个 Claude Code 源码文件，按章节和目录组织', '') + shell('', undefined, `<article class="chapter plain-page map-page"><h1>源码思维导图</h1><div class="prose">${content}</div></article>`);
+}
+
 export function workshopPage(content: string) {
-  return head('coda 实现主线 · Learn Claude Code', '十四章共同搭建一个可运行的 Coding Agent', '') + shell('', undefined, `<article class="chapter plain-page"><h1>coda：贯穿全课的实现主线</h1><div class="prose">${content}</div></article>`);
+  return head('coda 实现主线 · Learn Claude Code', '十四章逐步搭建一个更像 Claude Code 的小型 Agent', '') + shell('', undefined, `<article class="chapter plain-page"><h1>coda：贯穿全课的实现主线</h1><div class="prose">${content}</div></article>`);
 }

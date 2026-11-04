@@ -18,24 +18,25 @@ function classify(q: any) {
 
 if (part === 'timeline') {
   const r = load('4-auto');
-  const threshold = r.window - 32000;
+  const threshold = r.window - Math.min(32000, 20000) - 13000;   // 2.1.88 的公式：窗口 − min(最大输出, 20000) − 13000
   console.log(`窗口设为 ${r.window}（CLAUDE_CODE_MAX_CONTEXT_TOKENS），每个请求的 max_tokens 是 32000。\n`);
-  console.log('| # | 请求 | 消息数 | 输入 token | 上下文里有全文的文件 | 只在摘要里提到的 |');
-  console.log('| --- | --- | --- | --- | --- | --- |');
+  console.log('| # | 请求 | 消息数 | 输入 token | 其中读自缓存 | 上下文里有全文的文件 | 只在摘要里提到的 |');
+  console.log('| --- | --- | --- | --- | --- | --- | --- |');
   let seen: string[] = [];
   for (const q of r.requests) {
     const c = classify(q);
-    if (c.kind !== 'main') { console.log(`| ${q.id} | ${c.label} | ${q.messages.length} | ${c.kind === 'compact' ? total(q.response?.usage) : '—'} | | |`); continue; }
+    const cached = (u: any = {}) => (total(u) ? `${u.cache_read_input_tokens ?? 0}（${Math.round((100 * (u.cache_read_input_tokens ?? 0)) / total(u))}%）` : '—');
+    if (c.kind !== 'main') { console.log(`| ${q.id} | ${c.label} | ${q.messages.length} | ${c.kind === 'compact' ? total(q.response?.usage) : '—'} | ${c.kind === 'compact' ? cached(q.response?.usage) : '—'} | | |`); continue; }
     const summarized = (q.messages[0].blocks[0].firstLine ?? '').startsWith('This session is being continued');
     // 文件的全文只会出现在工具结果里（用户消息）；摘要是第 0 条消息
     const where = Object.entries<string[]>(q.markers ?? {}).map(([k, w]) => [short(k), w.filter(x => x.endsWith('(user)') && !(summarized && x.startsWith('messages[0]')))] as const);
     const full = where.filter(([, w]) => w.length).map(([f]) => f);
     const mentioned = where.filter(([, w]) => !w.length).map(([f]) => f);
-    console.log(`| ${q.id} | 主循环${summarized ? '（开头是摘要）' : ''} | ${q.messages.length} | ${total(q.response?.usage)} | ${full.map(f => (seen.includes(f) ? f : `**${f}**`)).join(' ') || '—'} | ${mentioned.join(' ') || ''} |`);
+    console.log(`| ${q.id} | 主循环${summarized ? '（开头是摘要）' : ''} | ${q.messages.length} | ${total(q.response?.usage)} | ${cached(q.response?.usage)} | ${full.map(f => (seen.includes(f) ? f : `**${f}**`)).join(' ') || '—'} | ${mentioned.join(' ') || ''} |`);
     seen = [...full, ...mentioned];
   }
   const b = r.events.find((e: any) => e.subtype === 'compact_boundary').compact_metadata;
-  console.log(`\n观察到的阈值 ≈ 窗口 − max_tokens = ${r.window} − 32000 = ${threshold}。第 8 个请求之后读入 delta.js，上下文估计到 ${b.pre_tokens}，超过阈值，于是在发下一个请求之前压缩。`);
+  console.log(`\n按 2.1.88 的公式，触发线 = 窗口 − min(max_tokens, 20000) − 13000 = ${r.window} − 20000 − 13000 = ${threshold}。第 8 个请求的输入是 41361，没有触发；读入 delta.js 之后上下文估计到 ${b.pre_tokens}，超过触发线，于是在发下一个请求之前压缩。`);
   console.log(`compact_boundary：trigger=${b.trigger}，压缩前 ${b.pre_tokens} → 压缩后 ${b.post_tokens} token；原样保留 ${b.preserved_messages.uuids.length} 条消息`);
   const t = r.transcripts[0].entries;
   const start = t.findIndex((e: any) => e.subtype === 'compact_boundary');

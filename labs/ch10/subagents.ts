@@ -8,7 +8,7 @@ const part = process.argv[2] ?? 'requests';
 
 if (part === 'requests') {
   const r = load('fg');
-  // 按工具数量区分三方的第一个请求：父 Agent 20 个工具，reviewer 3 个，Explore 9 个
+  // 区分三方的第一个请求：父 Agent 有 Agent 工具；reviewer 的系统提示以定义文件的正文开头；Explore 有 Bash 却没有 Agent
   const first = (pred: (q: any) => boolean) => r.requests.find((q: any) => q.tools.length && pred(q));
   const parent = first(q => q.tools.some((t: any) => t.name === 'Agent'));
   const reviewer = first(q => q.system.some((s: any) => s.firstLine.startsWith('CANARY-AGENT-PROMPT')));
@@ -18,6 +18,13 @@ if (part === 'requests') {
   const rows: [string, (q: any) => string][] = [
     ['系统提示主体', q => `${q.system.at(-1).chars} 字符：“${short(q.system.at(-1).firstLine, 26)}”`],
     ['工具', q => (q.tools.length > 12 ? `${q.tools.length} 个` : `${q.tools.length} 个：${q.tools.map((t: any) => t.name).join('、')}`)],
+    ['和父 Agent 的工具相比', q => {
+      if (q === parent) return '—';
+      const names = (x: any) => x.tools.map((t: any) => t.name);
+      const fewer = names(parent).filter((n: string) => !names(q).includes(n));
+      const more = names(q).filter((n: string) => !names(parent).includes(n));
+      return `少了 ${fewer.length} 个${fewer.length <= 8 ? `（${fewer.join('、')}）` : ''}；${more.length ? `**多了** ${more.join('、')}` : '没有多出来的'}`;
+    }],
     ['项目的 CLAUDE.md', q => has(q, 'CANARY-SUBAGENT-CLAUDEMD')],
     ['父对话里的暗号', q => has(q, 'CANARY-PARENT-ONLY')],
     ['子 Agent 的目录', q => has(q, 'CANARY-AGENT-DESC')],

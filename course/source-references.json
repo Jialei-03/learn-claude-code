@@ -160,6 +160,97 @@
     "span": 78,
     "claim": "Skill 作为工具执行，名称校验和 command lookup 先于实际展开。"
   },
+  "skill-find-command": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/commands.ts",
+    "anchor": "export function findCommand(",
+    "span": 12,
+    "claim": "斜杠命令和 Skill 工具共用一个查找函数：按 name、显示名、别名匹配，先到先得。"
+  },
+  "skill-command-name": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/types/command.ts",
+    "anchor": "export function getCommandName(",
+    "span": 3,
+    "claim": "命令的显示名来自 userFacingName，没有就退回 name。"
+  },
+  "skill-substitute": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/utils/argumentSubstitution.ts",
+    "anchor": "export function substituteArguments(",
+    "span": 56,
+    "claim": "$ARGUMENTS、$ARGUMENTS[n]、$n 和具名参数分几遍替换；没有占位符时把参数附在正文后面。"
+  },
+  "skill-parse-arguments": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/utils/argumentSubstitution.ts",
+    "anchor": "export function parseArguments(",
+    "span": 18,
+    "claim": "参数字符串按 shell 的引号规则切成数组。"
+  },
+  "skill-listing-budget": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/prompt.ts",
+    "anchor": "export function formatCommandsWithinBudget(",
+    "span": 102,
+    "claim": "Skill 目录有字符预算：先尝试完整描述，装不下就按比例截短，再不行只留名字。"
+  },
+  "skill-listing-char-budget": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/prompt.ts",
+    "anchor": "export function getCharBudget(",
+    "span": 11,
+    "claim": "目录预算默认是上下文窗口的 1%（按每个 token 4 个字符换算）。"
+  },
+  "skill-listing-description": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/prompt.ts",
+    "anchor": "function getCommandDescription(",
+    "span": 8,
+    "claim": "目录里每条的描述 = description + when_to_use，最长 250 个字符。"
+  },
+  "skill-listing-line": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/prompt.ts",
+    "anchor": "function formatCommandDescription(",
+    "span": 15,
+    "claim": "目录里的一行是 `- 名字: 描述`。"
+  },
+  "skill-create-command": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/skills/loadSkillsDir.ts",
+    "anchor": "export function createSkillCommand({",
+    "span": 135,
+    "claim": "frontmatter 解析出的字段被装配成一个 Command 对象，正文的渲染推迟到 getPromptForCommand。"
+  },
+  "skill-safe-check": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/SkillTool.ts",
+    "anchor": "function skillHasOnlySafeProperties(",
+    "span": 24,
+    "claim": "只有所有字段都在白名单内（或为空）的 Skill，Skill 工具才免询问。"
+  },
+  "skill-safe-set": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/tools/SkillTool/SkillTool.ts",
+    "anchor": "const SAFE_SKILL_PROPERTIES = new Set([",
+    "span": 34,
+    "claim": "免询问字段白名单：新增字段默认要询问，审查之后才能加进来。"
+  },
+  "skill-truncate": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/utils/truncate.ts",
+    "anchor": "export function truncate(",
+    "span": 25,
+    "claim": "目录里描述的截断按显示宽度计算，不是按字符数。"
+  },
+  "skill-truncate-width": {
+    "chapter": "09-skills",
+    "file": "restored-src/src/utils/truncate.ts",
+    "anchor": "export function truncateToWidth(",
+    "span": 13,
+    "claim": "按显示宽度截断，超出的部分换成省略号。"
+  },
   "agent-run": {
     "chapter": "10-subagents",
     "file": "restored-src/src/tools/AgentTool/runAgent.ts",
@@ -208,5 +299,824 @@
     "anchor": "export function query(): Query",
     "span": 10,
     "claim": "此还原文件的 SDK query 是占位实现，不能当作完整 SDK 执行器。"
+  },
+  "tool-input-normalize": {
+    "chapter": "01-one-run",
+    "file": "restored-src/src/utils/messages.ts",
+    "anchor": "export function normalizeContentFromAPI(",
+    "span": 75,
+    "claim": "流式 tool_use 的参数是拼出来的字符串；严格解析失败就退回空对象，把问题留给下游的参数校验。"
+  },
+  "json-parse-strict": {
+    "chapter": "01-one-run",
+    "file": "restored-src/src/utils/json.ts",
+    "anchor": "function parseJSONUncached(",
+    "span": 12,
+    "claim": "safeParseJSON 的底层是一次严格的 JSON.parse：不完整的 JSON 没有半成品，只有失败。"
+  },
+  "perm-outer": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export const hasPermissionsToUseTool: CanUseToolFn",
+    "span": 484,
+    "claim": "外层包装：allow 时重置连续拒绝计数，ask 时按 dontAsk、auto、无界面三种情形转换。"
+  },
+  "perm-tool-matches": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "function toolMatchesRule(",
+    "span": 32,
+    "claim": "整工具规则只匹配不带内容的规则；MCP 的服务器级规则匹配该服务器的全部工具。"
+  },
+  "perm-allow-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getAllowRules(",
+    "span": 10,
+    "claim": "所有来源的 allow 规则合并成一个列表。"
+  },
+  "perm-deny-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getDenyRules(",
+    "span": 10,
+    "claim": "所有来源的 deny 规则合并成一个列表。"
+  },
+  "perm-ask-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getAskRules(",
+    "span": 10,
+    "claim": "所有来源的 ask 规则合并成一个列表。"
+  },
+  "perm-deny-for-tool": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getDenyRuleForTool(",
+    "span": 8,
+    "claim": "按工具名查整工具 deny 规则。"
+  },
+  "perm-ask-for-tool": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getAskRuleForTool(",
+    "span": 8,
+    "claim": "按工具名查整工具 ask 规则。"
+  },
+  "perm-allow-for-tool": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function toolAlwaysAllowedRule(",
+    "span": 8,
+    "claim": "按工具名查整工具 allow 规则。"
+  },
+  "perm-updated-input": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "function getUpdatedInputOrFallback(",
+    "span": 12,
+    "claim": "允许结果里可以带改写后的输入。"
+  },
+  "perm-rules-by-contents": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getRuleByContentsForToolName(",
+    "span": 30,
+    "claim": "把某个工具、某种行为的内容级规则整理成 内容→规则 的表。"
+  },
+  "perm-rules-by-contents-tool": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissions.ts",
+    "anchor": "export function getRuleByContentsForTool(",
+    "span": 12,
+    "claim": "按 Tool 对象取内容级规则表。"
+  },
+  "perm-rule-parse": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissionRuleParser.ts",
+    "anchor": "export function permissionRuleValueFromString(",
+    "span": 50,
+    "claim": "规则字符串解析：Tool(内容)，空内容和 * 退化成整工具规则。"
+  },
+  "perm-rule-unescape": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissionRuleParser.ts",
+    "anchor": "export function unescapeRuleContent(",
+    "span": 8,
+    "claim": "规则内容里的括号和反斜杠转义。"
+  },
+  "perm-rule-first-paren": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissionRuleParser.ts",
+    "anchor": "function findFirstUnescapedChar(",
+    "span": 20,
+    "claim": "找第一个没被转义的字符。"
+  },
+  "perm-rule-last-paren": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/permissionRuleParser.ts",
+    "anchor": "function findLastUnescapedChar(",
+    "span": 20,
+    "claim": "找最后一个没被转义的字符。"
+  },
+  "perm-mcp-info": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/services/mcp/mcpStringUtils.ts",
+    "anchor": "export function mcpInfoFromString(",
+    "span": 16,
+    "claim": "MCP 工具名 mcp__服务器__工具 的拆分。"
+  },
+  "perm-shell-wildcard": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/shellRuleMatching.ts",
+    "anchor": "export function matchWildcardPattern(",
+    "span": 70,
+    "claim": "Bash 规则的通配符匹配：星号匹配任意文本，结尾的“空格星号”让参数可选。"
+  },
+  "perm-shell-parse": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/shellRuleMatching.ts",
+    "anchor": "export function parsePermissionRule(",
+    "span": 28,
+    "claim": "Bash 规则的三种形态：旧的前缀、通配符、精确。"
+  },
+  "perm-shell-prefix": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/shellRuleMatching.ts",
+    "anchor": "export function permissionRuleExtractPrefix(",
+    "span": 8,
+    "claim": "旧式前缀语法 npm:*。"
+  },
+  "perm-shell-has-wildcards": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/utils/permissions/shellRuleMatching.ts",
+    "anchor": "export function hasWildcards(",
+    "span": 26,
+    "claim": "判断规则里有没有未转义的星号。"
+  },
+  "perm-bash-strip-wrappers": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "export function stripSafeWrappers(",
+    "span": 96,
+    "claim": "放行侧的剥离：只去掉安全的环境变量和 timeout、time、nice、nohup 之类的包装。"
+  },
+  "perm-bash-strip-env": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "export function stripAllLeadingEnvVars(",
+    "span": 48,
+    "claim": "拒绝侧的剥离：去掉所有前置环境变量。"
+  },
+  "perm-bash-strip-comments": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "function stripCommentLines(",
+    "span": 16,
+    "claim": "去掉注释行。"
+  },
+  "perm-bash-filter-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "function filterRulesByContentsMatchingInput(",
+    "span": 160,
+    "claim": "Bash 规则匹配：候选命令集合、复合命令保护、前缀的词边界。"
+  },
+  "perm-bash-matching-rules": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "function matchingRulesForInput(",
+    "span": 46,
+    "claim": "deny、ask 用激进的环境变量剥离，allow 只用安全剥离。"
+  },
+  "perm-bash-exact": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "export const bashToolCheckExactMatchPermission = (",
+    "span": 52,
+    "claim": "整条命令的精确匹配：deny、ask、allow。"
+  },
+  "perm-bash-check": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/bashPermissions.ts",
+    "anchor": "export const bashToolCheckPermission = (",
+    "span": 118,
+    "claim": "单个子命令的决策顺序：精确规则、前缀规则、路径约束、allow、模式、只读、询问。"
+  },
+  "perm-bash-mode": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/modeValidation.ts",
+    "anchor": "export function checkPermissionMode(",
+    "span": 38,
+    "claim": "Bash 里按模式放行：acceptEdits 下的文件系统命令。"
+  },
+  "streaming-executor": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/services/tools/StreamingToolExecutor.ts",
+    "anchor": "export class StreamingToolExecutor {",
+    "span": 480,
+    "claim": "流式执行器在 tool_use 块完整时就让它入队：并发安全的调用可以同时跑，其余的独占；交回结果时，只有“正在执行、且不是并发安全”的调用会挡住后面的结果。"
+  },
+  "persist-threshold": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/utils/toolResultStorage.ts",
+    "anchor": "export function getPersistenceThreshold(",
+    "span": 28,
+    "claim": "每个工具声明自己的结果上限，实际阈值取它与全局默认值中较小的一个；声明为 Infinity 的工具永远不落盘。"
+  },
+  "persist-preview": {
+    "chapter": "03-tools",
+    "file": "restored-src/src/utils/toolResultStorage.ts",
+    "anchor": "export function generatePreview(",
+    "span": 21,
+    "claim": "落盘后的预览尽量截在换行处，换行位置不到一半时才按字节上限硬切。"
+  },
+  "perm-bash-mode-one": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/modeValidation.ts",
+    "anchor": "function validateCommandForMode(",
+    "span": 24,
+    "claim": "acceptEdits 下，文件系统命令（mkdir、touch、rm、mv、cp、sed……）按模式放行。"
+  },
+  "perm-bash-is-fs": {
+    "chapter": "06-permissions",
+    "file": "restored-src/src/tools/BashTool/modeValidation.ts",
+    "anchor": "function isFilesystemCommand(",
+    "span": 3,
+    "claim": "判断命令是否在 acceptEdits 放行名单里。"
+  },
+  "hook-matcher": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "function matchesPattern(matchQuery: string, matcher: string): boolean {",
+    "span": 36,
+    "claim": "matcher 为空或 * 匹配全部；只含字母数字下划线和竖线时精确匹配；其余当正则。"
+  },
+  "hook-validate-json": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "function validateHookJson(",
+    "span": 16,
+    "claim": "Hook 的 JSON 输出先解析，再用 schema 校验。"
+  },
+  "hook-parse-output": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "function parseHookOutput(stdout: string): {",
+    "span": 53,
+    "claim": "stdout 不以 { 开头、或 JSON 解析失败，当作纯文本；JSON 能解析但 schema 不符才算校验错误。"
+  },
+  "hook-json-output": {
+    "chapter": "07-hooks",
+    "file": "restored-src/src/utils/hooks.ts",
+    "anchor": "function processHookJSONOutput({",
+    "span": 249,
+    "claim": "JSON 输出的每个字段在不同事件里变成什么：权限意见、阻止、改写参数、补充上下文、停止继续。"
+  },
+  "effective-window": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/autoCompact.ts",
+    "anchor": "export function getEffectiveContextWindowSize(",
+    "span": 17,
+    "claim": "有效窗口 = 模型窗口扣掉摘要输出的预留（最多 20000）；CLAUDE_CODE_AUTO_COMPACT_WINDOW 只能把窗口往小调。"
+  },
+  "time-based-trigger": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/microCompact.ts",
+    "anchor": "export function evaluateTimeBasedTrigger(",
+    "span": 23,
+    "claim": "时间触发的微压缩：距最近一条助手消息超过阈值才触发，且只对主线程生效。"
+  },
+  "time-based-microcompact": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/microCompact.ts",
+    "anchor": "function maybeTimeBasedMicrocompact(",
+    "span": 84,
+    "claim": "触发后保留最近 N 个可压缩的工具结果，其余内容换成一句固定的占位文字。"
+  },
+  "compactable-tool-ids": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/microCompact.ts",
+    "anchor": "function collectCompactableToolIds(",
+    "span": 16,
+    "claim": "只有读文件、Shell、搜索、抓取、编辑这几类工具的结果可以被微压缩。"
+  },
+  "tool-result-tokens": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/microCompact.ts",
+    "anchor": "function calculateToolResultTokens(",
+    "span": 20,
+    "claim": "工具结果的 token 数是估算值，图片和文档按固定的 2000 计。"
+  },
+  "main-thread-source": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/microCompact.ts",
+    "anchor": "function isMainThreadSource(",
+    "span": 3,
+    "claim": "主线程的 querySource 以 repl_main_thread 开头；子 Agent 不参与微压缩。"
+  },
+  "conversation-chain": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/sessionStorage.ts",
+    "anchor": "export function buildConversationChain(",
+    "span": 26,
+    "claim": "恢复会话：从叶子沿 parentUuid 走回根，再补回并行工具调用里被单链走丢的兄弟记录。"
+  },
+  "orphaned-parallel-results": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/sessionStorage.ts",
+    "anchor": "function recoverOrphanedParallelToolResults(",
+    "span": 100,
+    "claim": "并行工具调用在文件里是有向无环图，单链遍历会丢记录，这个后处理把它们补回原位。"
+  },
+  "latest-message": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/sessionStorage.ts",
+    "anchor": "function findLatestMessage<T extends { timestamp: string }>(",
+    "span": 20,
+    "claim": "“最近的会话叶子”按时间戳最大选出，而不是文件里最后一行。"
+  },
+  "unresolved-tool-uses": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/messages.ts",
+    "anchor": "export function filterUnresolvedToolUses(",
+    "span": 45,
+    "claim": "恢复时丢掉所有工具调用都没有结果的助手消息。"
+  },
+  "tool-result-pairing": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/messages.ts",
+    "anchor": "export function ensureToolResultPairing(",
+    "span": 245,
+    "claim": "每次请求前的配对修复：缺结果的调用补一条错误结果，孤立的结果去掉，重复的去重。"
+  },
+  "format-compact-summary": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/prompt.ts",
+    "anchor": "export function formatCompactSummary(",
+    "span": 25,
+    "claim": "摘要里的 <analysis> 草稿被剥掉，只留 <summary> 的正文。"
+  },
+  "compact-summary-message": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/services/compact/prompt.ts",
+    "anchor": "export function getCompactUserSummaryMessage(",
+    "span": 38,
+    "claim": "摘要以一条用户消息放进上下文，末尾告诉模型完整记录存在哪个文件里。"
+  },
+  "detect-turn-interruption": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/conversationRecovery.ts",
+    "anchor": "function detectTurnInterruption(",
+    "span": 55,
+    "claim": "恢复时按最后一条有效消息判断上一轮是正常结束、提问没被回应，还是工具执行到一半。"
+  },
+  "memory-parse": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "function parseMemoryFileContent(",
+    "span": 58,
+    "claim": "一份说明文件被读成 MemoryFileInfo：扩展名白名单、去 frontmatter、去块级 HTML 注释、MEMORY.md 截断，以及“和磁盘不一致”的标记。"
+  },
+  "memory-include-paths": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "function extractIncludePathsFromTokens(",
+    "span": 85,
+    "claim": "@path 只在 Markdown 的文本节点里生效：代码块、行内代码、HTML 注释里的 @ 都被跳过；#片段被去掉，只认 ./、~/、/ 和裸路径。"
+  },
+  "memory-strip-comments": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/claudemd.ts",
+    "anchor": "function stripHtmlCommentsFromTokens(",
+    "span": 32,
+    "claim": "只删除块级 HTML 注释；注释后面同一行的残留文字保留，没有闭合的注释原样保留。"
+  },
+  "memory-nested-dirs": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/attachments.ts",
+    "anchor": "export function getDirectoriesToProcess(",
+    "span": 34,
+    "claim": "读到一个文件时，要检查的目录有两组：cwd 到该文件所在目录之间的（加载 CLAUDE.md 与全部规则），根到 cwd 的（只看带 paths 的规则）。"
+  },
+  "memory-attachments": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/attachments.ts",
+    "anchor": "export function memoryFilesToAttachments(",
+    "span": 66,
+    "claim": "按需加载的说明文件转成 nested_memory 附件：用 loadedNestedMemoryPaths 与 readFileState 两层去重，并把原始磁盘内容记进 readFileState。"
+  },
+  "memory-index-truncate": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/memdir/memdir.ts",
+    "anchor": "export function truncateEntrypointContent(",
+    "span": 47,
+    "claim": "MEMORY.md 先按行数（200）截断，再按字节数（25000）截断，并附上一条说明哪个上限触发的警告。"
+  },
+  "memory-user-context": {
+    "chapter": "04-memory",
+    "file": "restored-src/src/utils/api.ts",
+    "anchor": "export function prependUserContext(",
+    "span": 26,
+    "claim": "每次调用模型前，把 claudeMd 和日期放进第一条用户消息（meta），包在 system-reminder 里。"
+  },
+  "agent-filter": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/agentToolUtils.ts",
+    "anchor": "export function filterToolsForAgent({",
+    "span": 47,
+    "claim": "所有子 Agent 共用的工具过滤：MCP 工具放行，禁用清单、自定义 Agent 清单和后台白名单依次裁剪。"
+  },
+  "agent-resolve": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/agentToolUtils.ts",
+    "anchor": "export function resolveAgentTools(",
+    "span": 104,
+    "claim": "子 Agent 定义里的 tools / disallowedTools 在共用过滤之后再裁一次，通配符表示保留剩下的全部。"
+  },
+  "agent-builtin-list": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/builtInAgents.ts",
+    "anchor": "export function getBuiltInAgents(",
+    "span": 51,
+    "claim": "内置 Agent 的清单由环境变量、入口类型和功能开关共同决定。"
+  },
+  "agent-explore-gate": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/builtInAgents.ts",
+    "anchor": "export function areExplorePlanAgentsEnabled(",
+    "span": 8,
+    "claim": "Explore 与 Plan 是否出现，取决于编译期开关和服务端灰度 tengu_amber_stoat（缺省开启）。"
+  },
+  "agent-def-general": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/built-in/generalPurposeAgent.ts",
+    "anchor": "export const GENERAL_PURPOSE_AGENT: BuiltInAgentDefinition = {",
+    "span": 10,
+    "claim": "general-purpose 拿通配符工具，不指定模型（继承父 Agent）。"
+  },
+  "agent-def-explore": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/built-in/exploreAgent.ts",
+    "anchor": "export const EXPLORE_AGENT: BuiltInAgentDefinition = {",
+    "span": 20,
+    "claim": "Explore 只读靠禁用清单收缩工具，外部用户默认用 haiku，并且不带 CLAUDE.md。"
+  },
+  "agent-def-plan": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/built-in/planAgent.ts",
+    "anchor": "export const PLAN_AGENT: BuiltInAgentDefinition = {",
+    "span": 20,
+    "claim": "Plan 与 Explore 共用工具集合，模型继承父 Agent。"
+  },
+  "agent-def-statusline": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/built-in/statuslineSetup.ts",
+    "anchor": "export const STATUSLINE_SETUP_AGENT: BuiltInAgentDefinition = {",
+    "span": 12,
+    "claim": "statusline-setup 只给 Read 和 Edit，固定用 sonnet。"
+  },
+  "agent-def-guide": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/built-in/claudeCodeGuideAgent.ts",
+    "anchor": "export const CLAUDE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {",
+    "span": 40,
+    "claim": "claude-code-guide 只给搜索、读取和联网工具，用 haiku，权限模式是 dontAsk。"
+  },
+  "agent-active": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/tools/AgentTool/loadAgentsDir.ts",
+    "anchor": "export function getActiveAgentsFromList(",
+    "span": 30,
+    "claim": "同名 Agent 按 内置、插件、用户、项目、命令行、托管 的顺序覆盖，后者胜出。"
+  },
+  "agent-model": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/utils/model/agent.ts",
+    "anchor": "export function getAgentModel(",
+    "span": 60,
+    "claim": "子 Agent 的模型依次取 环境变量、调用参数、定义里的 model，最后继承父 Agent。"
+  },
+  "agent-model-tier": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/utils/model/agent.ts",
+    "anchor": "function aliasMatchesParentTier(",
+    "span": 14,
+    "claim": "写 opus / sonnet / haiku 且与父 Agent 同档时，直接沿用父 Agent 的完整模型名。"
+  },
+  "agent-model-default": {
+    "chapter": "10-subagents",
+    "file": "restored-src/src/utils/model/agent.ts",
+    "anchor": "export function getDefaultSubagentModel(",
+    "span": 3,
+    "claim": "不指定模型的子 Agent 默认继承父 Agent。"
+  },
+  "mcp-normalize-name": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/normalization.ts",
+    "anchor": "export function normalizeNameForMCP(name: string): string {",
+    "span": 8,
+    "claim": "服务器名和工具名里不属于 [a-zA-Z0-9_-] 的字符一律换成下划线。"
+  },
+  "mcp-prefix": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/mcpStringUtils.ts",
+    "anchor": "export function getMcpPrefix(serverName: string): string {",
+    "span": 3,
+    "claim": "MCP 工具名的前缀是 mcp__ 加归一化后的服务器名。"
+  },
+  "mcp-tool-name": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/mcpStringUtils.ts",
+    "anchor": "export function buildMcpToolName(serverName: string, toolName: string): string {",
+    "span": 3,
+    "claim": "MCP 工具的完整名字 = 前缀 + 归一化后的工具名。"
+  },
+  "mcp-env-expand": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/envExpansion.ts",
+    "anchor": "export function expandEnvVarsInString(",
+    "span": 32,
+    "claim": "配置里的 ${VAR} 和 ${VAR:-默认值} 在读配置时展开，缺失的变量单独报告。"
+  },
+  "mcp-project-status": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/utils.ts",
+    "anchor": "export function getProjectMcpServerStatus(",
+    "span": 56,
+    "claim": "项目里的 .mcp.json 服务器要先批准；非交互模式（-p、SDK）直接视为已批准。"
+  },
+  "mcp-sanitize": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/sanitization.ts",
+    "anchor": "export function partiallySanitizeUnicode(prompt: string): string {",
+    "span": 42,
+    "claim": "反复做 NFKC 归一化并删掉格式字符、私用区、未分配码点，直到不再变化。"
+  },
+  "mcp-sanitize-deep": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/sanitization.ts",
+    "anchor": "export function recursivelySanitizeUnicode(value: unknown): unknown {",
+    "span": 21,
+    "claim": "对字符串、数组、对象的键和值递归清洗。"
+  },
+  "mcp-transform-result": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "export async function transformMCPResult(",
+    "span": 45,
+    "claim": "工具结果依次尝试 toolResult、structuredContent、content 数组；都没有就报错。"
+  },
+  "mcp-compact-schema": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "export function inferCompactSchema(value: unknown, depth = 2): string {",
+    "span": 17,
+    "claim": "为结果推断一段紧凑的类型签名，写进“结果太大”的提示里。"
+  },
+  "mcp-process-result": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "export async function processMCPResult(",
+    "span": 80,
+    "claim": "转换后的结果过大就整体存成文件，返回读取说明；带图片的结果走截断。"
+  },
+  "mcp-large-output": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/mcpOutputStorage.ts",
+    "anchor": "export function getLargeOutputInstructions(",
+    "span": 25,
+    "claim": "结果被存成文件以后，告诉模型怎样分段读完它。"
+  },
+  "mcp-format-description": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/mcpOutputStorage.ts",
+    "anchor": "export function getFormatDescription(",
+    "span": 13,
+    "claim": "按结果类型生成格式说明，写进读取指引。"
+  },
+  "mcp-call-tool": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "async function callMCPTool({",
+    "span": 217,
+    "claim": "一次 tools/call：自己的超时竞速、取消信号、进度回调，isError 变成异常。"
+  },
+  "mcp-tool-timeout": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/services/mcp/client.ts",
+    "anchor": "function getMcpToolTimeoutMs(): number {",
+    "span": 6,
+    "claim": "工具调用的超时取 MCP_TOOL_TIMEOUT，缺省约 27.8 小时。"
+  },
+  "mcp-is-deferred": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/tools/ToolSearchTool/prompt.ts",
+    "anchor": "export function isDeferredTool(tool: Tool): boolean {",
+    "span": 55,
+    "claim": "MCP 工具默认推迟加载，除非服务器在 _meta 里声明 alwaysLoad。"
+  },
+  "mcp-discovered-tools": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/toolSearch.ts",
+    "anchor": "export function extractDiscoveredToolNames(messages: Message[]): Set<string> {",
+    "span": 45,
+    "claim": "已加载的推迟工具不另存状态，每次请求都从对话里的 tool_reference 块重新算出来。"
+  },
+  "mcp-tool-search-mode": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/toolSearch.ts",
+    "anchor": "export function getToolSearchMode(): ToolSearchMode {",
+    "span": 27,
+    "claim": "ENABLE_TOOL_SEARCH 的各种取值对应 tst、tst-auto、standard 三种模式。"
+  },
+  "mcp-env-truthy": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/envUtils.ts",
+    "anchor": "export function isEnvTruthy(envVar: string | boolean | undefined): boolean {",
+    "span": 6,
+    "claim": "环境变量为 1、true、yes、on 才算真。"
+  },
+  "mcp-env-falsy": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/envUtils.ts",
+    "anchor": "export function isEnvDefinedFalsy(",
+    "span": 9,
+    "claim": "环境变量被明确设为 0、false、no、off 才算假；没设不算。"
+  },
+  "system-prompt-split": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/api.ts",
+    "anchor": "export function splitSysPromptPrefix(",
+    "span": 115,
+    "claim": "system 数组按边界和标记切成块：计费头不缓存，静态段标 global，动态段不标；没有边界或有 MCP 工具时整段合并成 org 级。"
+  },
+  "request-system-context": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/api.ts",
+    "anchor": "export function appendSystemContext(",
+    "span": 11,
+    "claim": "systemContext（git 状态）拼成 key: value 的几行，作为 system 数组的最后一项。"
+  },
+  "request-user-context": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/api.ts",
+    "anchor": "export function prependUserContext(",
+    "span": 26,
+    "claim": "userContext（CLAUDE.md、日期）做成一条 meta 用户消息，放在整个对话的最前面。"
+  },
+  "cache-breakpoints": {
+    "chapter": "02-request",
+    "file": "restored-src/src/services/api/claude.ts",
+    "anchor": "export function addCacheBreakpoints(",
+    "span": 148,
+    "claim": "每个请求在消息上只打一个缓存断点，打在最后一条（fire-and-forget 的分叉请求往前挪一条）。"
+  },
+  "cache-message-user": {
+    "chapter": "02-request",
+    "file": "restored-src/src/services/api/claude.ts",
+    "anchor": "export function userMessageToMessageParam(",
+    "span": 44,
+    "claim": "断点落在 user 消息最后一个内容块上。"
+  },
+  "cache-message-assistant": {
+    "chapter": "02-request",
+    "file": "restored-src/src/services/api/claude.ts",
+    "anchor": "export function assistantMessageToMessageParam(",
+    "span": 43,
+    "claim": "断点落在 assistant 消息最后一个内容块上，思考块除外。"
+  },
+  "date-change": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/attachments.ts",
+    "anchor": "export function getDateChangeAttachments(",
+    "span": 30,
+    "claim": "跨过午夜时，新日期作为附件追加在对话末尾；第一条消息里的旧日期故意不改，免得整个对话的缓存作废。"
+  },
+  "request-pairing": {
+    "chapter": "02-request",
+    "file": "restored-src/src/utils/messages.ts",
+    "anchor": "export function ensureToolResultPairing(",
+    "span": 330,
+    "claim": "发请求前的最后一道配对修复：缺结果的调用补错误结果，孤立或重复的结果去掉。"
+  },
+  "sandbox-should-use": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/tools/BashTool/shouldUseSandbox.ts",
+    "anchor": "export function shouldUseSandbox(",
+    "span": 24,
+    "claim": "一条 Bash 命令要不要进沙箱：沙箱没开、带了 dangerouslyDisableSandbox 且策略允许、没有命令、命中 excludedCommands，四个出口。"
+  },
+  "sandbox-excluded": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/tools/BashTool/shouldUseSandbox.ts",
+    "anchor": "function containsExcludedCommand(",
+    "span": 111,
+    "claim": "excludedCommands 的匹配：拆开复合命令，逐个子命令剥掉环境变量和包装命令后比较前缀、精确或通配符。"
+  },
+  "sandbox-managed-only": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "export function shouldAllowManagedSandboxDomainsOnly(",
+    "span": 6,
+    "claim": "策略设置里是否只信任托管配置里的域名。"
+  },
+  "sandbox-rule-parse": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "function permissionRuleValueFromString(",
+    "span": 14,
+    "claim": "适配层自己的规则解析：Tool(内容) 拆成工具名和内容。"
+  },
+  "sandbox-path-pattern": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "export function resolvePathPatternForSandbox(",
+    "span": 21,
+    "claim": "权限规则里的路径写法：// 是绝对路径，/ 相对于配置文件所在目录。"
+  },
+  "sandbox-fs-path": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "export function resolveSandboxFilesystemPath(",
+    "span": 8,
+    "claim": "sandbox.filesystem.* 里的路径写法：/ 就是绝对路径。"
+  },
+  "sandbox-managed-read-only": {
+    "chapter": "11-sandbox",
+    "file": "restored-src/src/utils/sandbox/sandbox-adapter.ts",
+    "anchor": "function shouldAllowManagedReadPathsOnly(",
+    "span": 6,
+    "claim": "策略设置里是否只信任托管配置里的可读路径。"
+  },
+  "headless-structured-io": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/cli/structuredIO.ts",
+    "anchor": "export class StructuredIO {",
+    "span": 640,
+    "claim": "StructuredIO：按行读 stdin，用 request_id 配对控制请求和回答，输入结束时拒绝等待中的请求。"
+  },
+  "headless-stream": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/utils/stream.ts",
+    "anchor": "export class Stream<T> implements AsyncIterator<T> {",
+    "span": 76,
+    "claim": "出站队列：所有要写给宿主的消息排进同一条队，只有一个读者。"
+  },
+  "headless-ndjson": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/cli/ndjsonSafeStringify.ts",
+    "anchor": "export function ndjsonSafeStringify(",
+    "span": 3,
+    "claim": "一行一条 JSON：写出之前转义 U+2028、U+2029。"
+  },
+  "headless-ndjson-escape": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/cli/ndjsonSafeStringify.ts",
+    "anchor": "function escapeJsLineTerminators(",
+    "span": 5,
+    "claim": "把 JSON 文本里的 U+2028、U+2029 换成转义写法。"
+  },
+  "mcp-auto-percentage": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/toolSearch.ts",
+    "anchor": "function parseAutoPercentage(value: string): number | null {",
+    "span": 15,
+    "claim": "ENABLE_TOOL_SEARCH=auto:N 里的 N，限制在 0 到 100。"
+  },
+  "mcp-auto-mode": {
+    "chapter": "08-mcp",
+    "file": "restored-src/src/utils/toolSearch.ts",
+    "anchor": "function isAutoToolSearchMode(value: string | undefined): boolean {",
+    "span": 4,
+    "claim": "auto 和 auto:N 都表示“超过阈值才推迟加载”。"
+  },
+  "headless-permission-decision": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/utils/permissions/PermissionPromptToolResultSchema.ts",
+    "anchor": "export function permissionPromptToolResultToPermissionDecision(",
+    "span": 44,
+    "claim": "宿主的回答变成权限决定：空的 updatedInput 回退到原参数，deny 带 interrupt 时中止整个运行。"
+  },
+  "headless-abort-error": {
+    "chapter": "12-headless-sdk",
+    "file": "restored-src/src/utils/errors.ts",
+    "anchor": "export class AbortError extends Error {",
+    "span": 6,
+    "claim": "AbortError：把“被取消”和普通错误区分开的错误类型。"
+  },
+  "preserved-segment-relinks": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/sessionStorage.ts",
+    "anchor": "function applyPreservedSegmentRelinks(",
+    "span": 120,
+    "claim": "压缩时原样保留的消息留在文件里原来的位置；加载时按边界上的头、锚、尾把它们接到摘要后面，再删掉边界之前其余的记录。"
+  },
+  "compact-boundary-check": {
+    "chapter": "05-sessions-compaction",
+    "file": "restored-src/src/utils/messages.ts",
+    "anchor": "export function isCompactBoundaryMessage(",
+    "span": 5,
+    "claim": "压缩边界就是 subtype 为 compact_boundary 的 system 消息。"
   }
 }

@@ -41,47 +41,47 @@ export interface PartInfo { id: string; title: string; subtitle: string; chapter
 
 export const parts: PartInfo[] = [
   {
-    id: 'p0', title: '开始之前', subtitle: '沿还原源码读懂一个产品级 Agent',
+    id: 'p0', title: '开始之前', subtitle: '先学会读，再开始拆',
     chapters: [
-      { n: 0, slug: '00-method', title: '证据与入口：先确定要重建什么', summary: '把源码文本、入口可达性、局部执行和端到端结果分开，给后面所有实验提供可追溯的基础。', status: 'ready' },
+      { n: 0, slug: '00-method', title: '导读：怎样读五十万行还原源码', summary: '这份源码从哪来、缺什么；从 claude 命令追到主循环；认出编译期开关；以及这门课用来验证结论的录制和实验。', status: 'ready' },
     ],
   },
   {
     id: 'p1', title: '一次运行', subtitle: '从输入到结束',
     chapters: [
-      { n: 1, slug: '01-one-run', title: '主循环：让一次任务正确地结束', summary: '接过第 0 章的证据约束，写出所有后续能力共同使用的 Engine。工具、权限和持久化都通过这里的边界接入。', status: 'ready' },
-      { n: 2, slug: '02-request', title: '请求构造：从提示来源到模型协议', summary: '循环只管什么时候请求；本章增加 request 回调，让提示、历史和工具定义通过同一个边界进入模型。', status: 'ready' },
-      { n: 3, slug: '03-tools', title: '工具执行：并发、校验与文件版本', summary: '上一章让模型知道工具；本章让调用真的产生受控效果，并把失败作为带 id 的结果交回循环。', status: 'ready' },
+      { n: 1, slug: '01-one-run', title: '主循环：queryLoop 的状态与出口', summary: '一次回车请求几次模型？沿 queryLoop 的 State 读懂七个继续位置和十个出口：工具结果、截断后的续写、Stop Hook、中止与运行中排队的消息，并和 Pi 的 runLoop 对照。', status: 'ready' },
+      { n: 2, slug: '02-request', title: '请求构造：模型每一轮收到的是什么', summary: '把提示、上下文、工具定义和历史拼成一个请求，要同时回答放什么、放在哪里才不毁掉缓存。', status: 'ready' },
+      { n: 3, slug: '03-tools', title: '工具执行：分批、关卡与文件版本', summary: '一条回复里的调用哪些能同时跑，一个调用执行前要过哪几道关，Edit 怎样确认文件没过期，大输出去了哪里。', status: 'ready' },
     ],
   },
   {
     id: 'p2', title: '上下文', subtitle: '记住什么、忘掉什么',
     chapters: [
-      { n: 4, slug: '04-memory', title: '项目指令：发现、递归与最终注入', summary: 'Engine 和文件工具已能工作；本章让它知道这个项目要求什么，并保留每份指令的来源。', status: 'ready' },
-      { n: 5, slug: '05-sessions-compaction', title: '会话与压缩：保留事实，重建视图', summary: '前面消息只存在内存里；本章把它们变成持久事实，同时允许模型使用压缩后的请求副本。', status: 'ready' },
+      { n: 4, slug: '04-memory', title: '项目记忆：从 CLAUDE.md 到请求里的第一条消息', summary: '一份规则怎样被找到、展开 @ 引用、按需加载，最后放进请求的哪个位置。', status: 'ready' },
+      { n: 5, slug: '05-sessions-compaction', title: '会话与压缩：文件只追加，请求靠重建', summary: '会话文件记下发生过的事，每次请求的消息从它重建；自动压缩、microcompact 和摘要请求只改变视图，不碰文件里的事实。', status: 'ready' },
     ],
   },
   {
     id: 'p3', title: '控制与扩展', subtitle: '谁能决定 Agent 做什么',
     chapters: [
-      { n: 6, slug: '06-permissions', title: '权限：谁有权决定一次效果', summary: '工具先完成参数校验，再把具体调用交给权限 gate；读取、编辑、未知效果和无界面等待各有明确结果。', status: 'ready' },
-      { n: 7, slug: '07-hooks', title: 'Hook：扩展流水线的输入与失败', summary: '第 6 章已经知道谁授权；本章让团队策略在明确阶段参与处理，同时保留权限和工具验证的最终边界。', status: 'ready' },
-      { n: 8, slug: '08-mcp', title: 'MCP：真实连接、发现、调用与退出', summary: '模型循环不关心工具来自哪里；本章把外部工具变成 Toolset 能消费的定义，并承担连接的整个生命周期。', status: 'ready' },
-      { n: 9, slug: '09-skills', title: 'Skill：描述、正文与执行范围', summary: '工具解决能做什么，Skill 提供何时以及怎样做；本章将元数据与正文分开给模型消费。', status: 'ready' },
+      { n: 6, slug: '06-permissions', title: '权限：一次调用怎样得到 allow、ask 或 deny', summary: '沿 hasPermissionsToUseTool 读决策顺序（规则、安全检查、bypass、allow），再看钩子、模式和无人可问时的结局，并在 coda 里实现三段决策。', status: 'ready' },
+      { n: 7, slug: '07-hooks', title: 'Hook：事件、匹配与失败时放行', summary: '读懂 Hook 怎样被匹配、并行运行，输出怎样拦下、改写或补话，以及它自己出错时为什么放行。', status: 'ready' },
+      { n: 8, slug: '08-mcp', title: 'MCP：配置、连接、包装与退出', summary: '一个 MCP 服务器怎样被信任、连接、包装成工具、被调用并转换结果，最后被收走。', status: 'ready' },
+      { n: 9, slug: '09-skills', title: 'Skill：常驻一行目录，调用时才渲染正文', summary: '模型平时只看到每个 Skill 的一行描述；调用时才渲染正文，并把 allowed-tools 变成这一轮的授权；fork 时交给子 Agent。', status: 'ready' },
     ],
   },
   {
     id: 'p4', title: '多 Agent 与长任务', subtitle: '把工作分出去，让它一直做下去',
     chapters: [
-      { n: 10, slug: '10-subagents', title: '子 Agent：缩小工具池并独立记账', summary: '用前面相同的 Engine 与 Toolset 创建子任务，明确它继承什么、隔离什么，以及取消从哪条信号链传递。', status: 'ready' },
-      { n: 11, slug: '11-sandbox', title: '沙箱：把规则落到真实进程', summary: '权限决定是否接受调用，本章另做平台配置与系统探针，验证允许和禁止的效果是否真实发生。', status: 'ready' },
+      { n: 10, slug: '10-subagents', title: '子 Agent：一张任务单进去，一份报告出来', summary: '拆开 Agent 工具怎样缩小工具池、隔离上下文、交回报告并传递取消，并确认发布版里 fork、verification 等路径走不走得到。', status: 'ready' },
+      { n: 11, slug: '11-sandbox', title: '沙箱：规则变成配置，配置变成内核的拒绝', summary: '权限规则怎样被翻译成沙箱配置，Bash 命令怎样被包进 seatbelt 或 bubblewrap，网络怎样经代理按域名放行，以及沙箱在什么时候会被绕过。', status: 'ready' },
     ],
   },
   {
-    id: 'p5', title: '工程化', subtitle: '把 Claude Code 当部件用',
+    id: 'p5', title: '工程化与总装', subtitle: '把 Claude Code 当部件用，再把部件装回去',
     chapters: [
-      { n: 12, slug: '12-headless-sdk', title: '无界面运行：输入、确认与 EOF', summary: '前面从函数调用驱动 Agent，本章让脚本通过 JSONL 驱动相同实现，并处理未完成确认和输入结束。', status: 'ready' },
-      { n: 13, slug: '13-synthesis', title: '总装：修复一个真正失败的项目', summary: '复用所有前章接口，以真实项目、真实测试和真实 MCP 连接验收完整任务，最后重开会话检查恢复。', status: 'ready' },
+      { n: 12, slug: '12-headless-sdk', title: '无界面运行：请求配对、EOF 与取消', summary: '无界面时没人可问，权限确认变成带 request_id 的跨进程请求；读 -p、stream-json 与 can_use_tool 往返，弄清 EOF、interrupt 各自怎么收场，再对照 Python SDK 与 Pi RPC。', status: 'ready' },
+      { n: 13, slug: '13-synthesis', title: '总装与对照：十二个机制挂在主循环哪里', summary: '沿 main.tsx、QueryEngine、query() 读 Claude Code 怎样装配前十二章的机制；在 coda 里把各章的缝接上，修好一个真正失败的测试；最后用四方对照和十条原则收束。', status: 'ready' },
     ],
   },
 ];

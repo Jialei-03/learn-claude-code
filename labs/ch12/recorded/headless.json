@@ -1,0 +1,1749 @@
+{
+ "version": "2.1.296 (Claude Code)",
+ "recordings": [
+  {
+   "name": "stdio-allow",
+   "question": "宿主批准并改写参数：改写生效吗？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "control_request",
+      "request_id": "host-init-1",
+      "request": {
+       "subtype": "initialize"
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 133,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "host-init-1",
+       "response": {
+        "commands": "44 条",
+        "agents": "5 个",
+        "models": "6 个",
+        "output_style": "default"
+       }
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 146,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 166,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 167,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 174,
+     "msg": {
+      "type": "control_request",
+      "request_id": "71cd1afc-3095-447f-b997-f052da137cf7",
+      "request": {
+       "subtype": "can_use_tool",
+       "tool_name": "Write",
+       "display_name": "Write",
+       "input": {
+        "file_path": "<project>/notes.txt",
+        "content": "hello from the model\n"
+       },
+       "description": "notes.txt",
+       "permission_suggestions": [
+        {
+         "type": "setMode",
+         "mode": "acceptEdits",
+         "destination": "session"
+        }
+       ],
+       "tool_use_id": "toolu_1_0"
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 174,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "71cd1afc-3095-447f-b997-f052da137cf7",
+       "response": {
+        "behavior": "allow",
+        "updatedInput": {
+         "file_path": "<project>/notes.txt",
+         "content": "宿主改写过的内容\n"
+        }
+       }
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 180,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "tool_use_id": "toolu_1_0",
+         "type": "tool_result",
+         "content": "File created successfully at: <project>/notes.txt (file state is current in your context — no need to Read it back)"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 188,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 191,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [],
+      "terminal_reason": "completed"
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 191,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": "宿主改写过的内容\n",
+   "modelSaw": {
+    "content": "File created successfully at: <project>/notes.txt (file state is current in your context — no need to Read it back)",
+    "is_error": false
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "stdio-deny",
+   "question": "宿主拒绝并写了理由：理由到了模型那里吗？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 145,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 161,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 162,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 168,
+     "msg": {
+      "type": "control_request",
+      "request_id": "8325d152-85bd-4470-afe1-c5891126cdad",
+      "request": {
+       "subtype": "can_use_tool",
+       "tool_name": "Write",
+       "display_name": "Write",
+       "input": {
+        "file_path": "<project>/notes.txt",
+        "content": "hello from the model\n"
+       },
+       "description": "notes.txt",
+       "permission_suggestions": [
+        {
+         "type": "setMode",
+         "mode": "acceptEdits",
+         "destination": "session"
+        }
+       ],
+       "tool_use_id": "toolu_1_0"
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 168,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "8325d152-85bd-4470-afe1-c5891126cdad",
+       "response": {
+        "behavior": "deny",
+        "message": "宿主说：这个目录只读，不要写文件。"
+       }
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 170,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "宿主说：这个目录只读，不要写文件。",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 178,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 181,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "completed"
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 181,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": {
+    "content": "宿主说：这个目录只读，不要写文件。",
+    "is_error": true
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "wrong-id",
+   "question": "回答的 id 对不上，或者重复发送：Claude Code 怎么处理？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 138,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 155,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 156,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 162,
+     "msg": {
+      "type": "control_request",
+      "request_id": "1fa59541-aa11-4ab2-b67c-2d9a470e5616",
+      "request": {
+       "subtype": "can_use_tool",
+       "tool_name": "Write",
+       "display_name": "Write",
+       "input": {
+        "file_path": "<project>/notes.txt",
+        "content": "hello from the model\n"
+       },
+       "description": "notes.txt",
+       "permission_suggestions": [
+        {
+         "type": "setMode",
+         "mode": "acceptEdits",
+         "destination": "session"
+        }
+       ],
+       "tool_use_id": "toolu_1_0"
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 162,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "no-such-request",
+       "response": {
+        "behavior": "allow",
+        "updatedInput": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 465,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "1fa59541-aa11-4ab2-b67c-2d9a470e5616",
+       "response": {
+        "behavior": "allow",
+        "updatedInput": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 465,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "1fa59541-aa11-4ab2-b67c-2d9a470e5616",
+       "response": {
+        "behavior": "deny",
+        "message": "迟到的重复回答"
+       }
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 474,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "tool_use_id": "toolu_1_0",
+         "type": "tool_result",
+         "content": "File created successfully at: <project>/notes.txt (file state is current in your context — no need to Read it back)"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 485,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 488,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [],
+      "terminal_reason": "completed"
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 488,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": "hello from the model\n",
+   "modelSaw": {
+    "content": "File created successfully at: <project>/notes.txt (file state is current in your context — no need to Read it back)",
+    "is_error": false
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "eof-pending",
+   "question": "审批请求还没有回答，宿主关闭了 stdin：等待中的请求怎么办？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 150,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 166,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 167,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 173,
+     "msg": {
+      "type": "control_request",
+      "request_id": "cf2ca4b3-28c3-4a65-84bc-ade89bff8127",
+      "request": {
+       "subtype": "can_use_tool",
+       "tool_name": "Write",
+       "display_name": "Write",
+       "input": {
+        "file_path": "<project>/notes.txt",
+        "content": "hello from the model\n"
+       },
+       "description": "notes.txt",
+       "permission_suggestions": [
+        {
+         "type": "setMode",
+         "mode": "acceptEdits",
+         "destination": "session"
+        }
+       ],
+       "tool_use_id": "toolu_1_0"
+      }
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 173,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 176,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "Tool permission request failed: AbortError: Tool permission stream closed before response received",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 183,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 186,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "completed"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": {
+    "content": "Tool permission request failed: AbortError: Tool permission stream closed before response received",
+    "is_error": true
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "eof-early",
+   "question": "提问一发完就关闭 stdin：已经开始的运行会被打断吗？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "读一下 a.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 144,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 160,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "先读一下文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 161,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Read",
+         "input": {
+          "file_path": "<project>/a.txt"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 174,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "tool_use_id": "toolu_1_0",
+         "type": "tool_result",
+         "content": "1\talpha\n2\t"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 181,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "读完了，内容没有问题。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 184,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "读完了，内容没有问题。",
+      "stop_reason": "end_turn",
+      "permission_denials": [],
+      "terminal_reason": "completed"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": {
+    "content": "1\talpha\n2",
+    "is_error": false
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "eof-then-ask",
+   "question": "提问发完立刻关闭 stdin，而模型的调用需要确认：请求还问得出去吗？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 141,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 157,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 157,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 164,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "Tool permission request failed: AbortError: Stream closed",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 172,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 175,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "completed"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": {
+    "content": "Tool permission request failed: AbortError: Stream closed",
+    "is_error": true
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "interrupt",
+   "question": "审批请求等待回答时收到 interrupt：请求会被撤销吗？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "--input-format",
+    "stream-json",
+    "--permission-prompt-tool",
+    "stdio"
+   ],
+   "wire": [
+    {
+     "dir": "host→cc",
+     "ms": 0,
+     "msg": {
+      "type": "user",
+      "session_id": "",
+      "message": {
+       "role": "user",
+       "content": "写一个笔记文件 notes.txt"
+      },
+      "parent_tool_use_id": null
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 142,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 27,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 158,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 159,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 166,
+     "msg": {
+      "type": "control_request",
+      "request_id": "3bcc6438-d83a-4bb2-a05c-4ab36502e476",
+      "request": {
+       "subtype": "can_use_tool",
+       "tool_name": "Write",
+       "display_name": "Write",
+       "input": {
+        "file_path": "<project>/notes.txt",
+        "content": "hello from the model\n"
+       },
+       "description": "notes.txt",
+       "permission_suggestions": [
+        {
+         "type": "setMode",
+         "mode": "acceptEdits",
+         "destination": "session"
+        }
+       ],
+       "tool_use_id": "toolu_1_0"
+      }
+     }
+    },
+    {
+     "dir": "host→cc",
+     "ms": 166,
+     "msg": {
+      "type": "control_request",
+      "request_id": "host-interrupt-1",
+      "request": {
+       "subtype": "interrupt"
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 168,
+     "msg": {
+      "type": "control_cancel_request",
+      "request_id": "3bcc6438-d83a-4bb2-a05c-4ab36502e476"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 168,
+     "msg": {
+      "type": "control_response",
+      "response": {
+       "subtype": "success",
+       "request_id": "host-interrupt-1",
+       "response": {
+        "still_queued": []
+       }
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 169,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 170,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "text",
+         "text": "[Request interrupted by user for tool use]"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 173,
+     "msg": {
+      "type": "result",
+      "subtype": "error_during_execution",
+      "is_error": true,
+      "num_turns": 3,
+      "stop_reason": "tool_use",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "aborted_tools"
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 173,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 1,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": null,
+   "modelRequests": 1
+  },
+  {
+   "name": "print-only",
+   "question": "没有 stdio 通道，只有 -p：需要确认的调用会怎样？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "-p",
+    "写一个笔记文件 notes.txt"
+   ],
+   "wire": [
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 147,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 24,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 162,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 163,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 168,
+     "msg": {
+      "type": "system",
+      "subtype": "permission_denied",
+      "tool_name": "Write",
+      "tool_use_id": "toolu_1_0",
+      "message": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+      "uuid": "568b2566-3bb2-4760-93e8-7a860d6b402c",
+      "session_id": "546dbe18-aa4f-426b-abfa-84e3344af382"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 168,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 173,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 176,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "completed"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": {
+    "content": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+    "is_error": true
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "print-stdin-open",
+   "question": "-p 的 stdin 是一根没人写也没人关的管道：会发生什么？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "default",
+    "-p",
+    "写一个笔记文件 notes.txt"
+   ],
+   "wire": [
+    {
+     "dir": "cc→host",
+     "ms": 3162,
+     "msg": {
+      "type": "system",
+      "subtype": "init",
+      "cwd": "<project>",
+      "session_id": "<session>",
+      "tools": 24,
+      "model": "claude-sonnet-4-5",
+      "permissionMode": "default",
+      "apiKeySource": "ANTHROPIC_API_KEY"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3186,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "我来写一个笔记文件。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3187,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "tool_use",
+         "id": "toolu_1_0",
+         "name": "Write",
+         "input": {
+          "file_path": "<project>/notes.txt",
+          "content": "hello from the model\n"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3192,
+     "msg": {
+      "type": "system",
+      "subtype": "permission_denied",
+      "tool_name": "Write",
+      "tool_use_id": "toolu_1_0",
+      "message": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+      "uuid": "6de38df0-24c6-470b-ae90-b59534c8fb9e",
+      "session_id": "8e509f59-e47b-48cb-8a9b-f34dc3f17b25"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3193,
+     "msg": {
+      "type": "user",
+      "message": {
+       "role": "user",
+       "content": [
+        {
+         "type": "tool_result",
+         "content": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+         "is_error": true,
+         "tool_use_id": "toolu_1_0"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3199,
+     "msg": {
+      "type": "assistant",
+      "message": {
+       "role": "assistant",
+       "content": [
+        {
+         "type": "text",
+         "text": "处理完了。"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 3205,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 2,
+      "result": "处理完了。",
+      "stop_reason": "end_turn",
+      "permission_denials": [
+       {
+        "tool_name": "Write",
+        "tool_use_id": "toolu_1_0",
+        "tool_input": {
+         "file_path": "<project>/notes.txt",
+         "content": "hello from the model\n"
+        }
+       }
+      ],
+      "terminal_reason": "completed"
+     }
+    },
+    {
+     "dir": "host",
+     "ms": 3206,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer.",
+   "notes": null,
+   "modelSaw": {
+    "content": "Claude requested permissions to write to <project>/notes.txt, but you haven't granted it yet.",
+    "is_error": true
+   },
+   "modelRequests": 2
+  },
+  {
+   "name": "format-text",
+   "question": "同一次运行，默认的文本输出长什么样？",
+   "argv": [
+    "--permission-mode",
+    "default",
+    "-p",
+    "随便说句话"
+   ],
+   "wire": [
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 200,
+     "raw": "你好，这是剧本里的回答。"
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": null,
+   "modelRequests": 1
+  },
+  {
+   "name": "format-json",
+   "question": "--output-format json 输出什么？",
+   "argv": [
+    "--output-format",
+    "json",
+    "--permission-mode",
+    "default",
+    "-p",
+    "随便说句话"
+   ],
+   "wire": [
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    },
+    {
+     "dir": "cc→host",
+     "ms": 190,
+     "msg": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "num_turns": 1,
+      "result": "你好，这是剧本里的回答。",
+      "stop_reason": "end_turn",
+      "permission_denials": [],
+      "terminal_reason": "completed"
+     }
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   },
+   "stderr": "",
+   "notes": null,
+   "modelSaw": null,
+   "modelRequests": 1
+  },
+  {
+   "name": "no-verbose",
+   "question": "stream-json 不加 --verbose 会怎样？",
+   "argv": [
+    "--output-format",
+    "stream-json",
+    "--permission-mode",
+    "default",
+    "-p",
+    "随便说句话"
+   ],
+   "wire": [
+    {
+     "dir": "host",
+     "ms": 0,
+     "msg": {
+      "note": "stdin 关闭（EOF）"
+     }
+    }
+   ],
+   "exit": {
+    "code": 1,
+    "signal": null
+   },
+   "stderr": "Error: When using --print, --output-format=stream-json requires --verbose",
+   "notes": null,
+   "modelSaw": null,
+   "modelRequests": 0
+  }
+ ]
+}
