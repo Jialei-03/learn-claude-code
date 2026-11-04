@@ -69,7 +69,79 @@ build: coda 的 ControlIO 和行协议：带 id 的审批请求，EOF 与取消�
 
 `--input-format stream-json` 下，`claude` 回答完一个问题并不退出：stdin 还开着，下一行随时可能来。所以进程里有两条并行的循环，源码里有一段注释把它说得很清楚：一条读 stdin、把消息放进队列，另一条从队列取出消息处理、产出结果；输入结束并且最后一次生成也做完，进程才算完成。两条循环加上 SDK 一侧，画成时序是这样（一次完整的审批往返在中间）：
 
-```mermaid
+::: steps 一次无界面运行：握手、提问、审批往返、EOF
+--- **握手。** 宿主先发 `initialize`，读 stdin 的循环回答可用的命令、模型和账号信息；SDK 在这里登记钩子的回调 id 和进程内 MCP 服务器的名字。
+sequenceDiagram
+  participant H as 宿主（SDK 或脚本）
+  participant R as stdin 读取循环
+  participant Q as run 循环（ask → query）
+  participant P as canUseTool（StructuredIO）
+  participant O as 出站队列 → stdout
+  H->>R: control_request initialize
+  R->>O: control_response（命令、模型、账号……）
+--- **提问进来。** 读 stdin 的 `for await` 把用户消息变成 `prompt` 命令入队，`void run()` 不等它（`print.ts` 第 4102–4122 行）；`run()` 开头的 `if (running) return` 是个互斥锁。模型回复 `tool_use Write`，先排进出站队列。
+sequenceDiagram
+  participant H as 宿主（SDK 或脚本）
+  participant R as stdin 读取循环
+  participant Q as run 循环（ask → query）
+  participant P as canUseTool（StructuredIO）
+  participant O as 出站队列 → stdout
+  H->>R: control_request initialize
+  R->>O: control_response（命令、模型、账号……）
+  H->>R: user 消息
+  R->>Q: enqueue，void run()
+  Q->>O: assistant（tool_use Write）
+--- **走到权限。** `run` 循环里 `canUseTool` 被调用。规则和模式已经说了 `allow` 或 `deny` 就直接返回，只有 `ask` 才往下走（`structuredIO.ts` 第 554–559 行）。
+sequenceDiagram
+  participant H as 宿主（SDK 或脚本）
+  participant R as stdin 读取循环
+  participant Q as run 循环（ask → query）
+  participant P as canUseTool（StructuredIO）
+  participant O as 出站队列 → stdout
+  H->>R: control_request initialize
+  R->>O: control_response（命令、模型、账号……）
+  H->>R: user 消息
+  R->>Q: enqueue，void run()
+  Q->>O: assistant（tool_use Write）
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask（第 6 章）
+--- **发出去。** 同时启动 PermissionRequest 钩子，不等它，立刻把 `can_use_tool` 请求放进出站队列（第 577–606 行）。写出不是直接 `write`，而是 `outbound.enqueue`，所以 `control_request` 不会插到还在排队的事件前面；等待者以 `request_id` 为键放进 `pendingRequests`（第 475–531 行）。
+sequenceDiagram
+  participant H as 宿主（SDK 或脚本）
+  participant R as stdin 读取循环
+  participant Q as run 循环（ask → query）
+  participant P as canUseTool（StructuredIO）
+  participant O as 出站队列 → stdout
+  H->>R: control_request initialize
+  R->>O: control_response（命令、模型、账号……）
+  H->>R: user 消息
+  R->>Q: enqueue，void run()
+  Q->>O: assistant（tool_use Write）
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask（第 6 章）
+  P->>O: control_request can_use_tool（request_id）
+  O->>H: 一行 JSON，按入队顺序
+--- **等回来。** 宿主用同一个 `request_id` 回一行 `control_response`。`processLine` 按它找到等待者，完成一次后删掉（第 374–424 行）；schema 校验通过，转成 allow 或 deny，`message` 原样成了 `tool_result` 的内容，运行接着往下走。
+sequenceDiagram
+  participant H as 宿主（SDK 或脚本）
+  participant R as stdin 读取循环
+  participant Q as run 循环（ask → query）
+  participant P as canUseTool（StructuredIO）
+  participant O as 出站队列 → stdout
+  H->>R: control_request initialize
+  R->>O: control_response（命令、模型、账号……）
+  H->>R: user 消息
+  R->>Q: enqueue，void run()
+  Q->>O: assistant（tool_use Write）
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask（第 6 章）
+  P->>O: control_request can_use_tool（request_id）
+  O->>H: 一行 JSON，按入队顺序
+  H->>R: control_response（同一个 request_id）
+  R->>P: 按 request_id 找到等待者，完成它
+  P-->>Q: allow（可带 updatedInput）或 deny（带 message）
+  Q->>O: user（tool_result）、assistant、result
+--- **收尾。** 宿主关闭 stdin：读循环只做 `inputClosed = true`，不 `abort`（第 4124 行）。此刻没有 `run()` 在跑才立刻 `output.done()`，在跑就交给 `run()` 自己收尾（第 4126–4138 行）。EOF 不是中断。
 sequenceDiagram
   participant H as 宿主（SDK 或脚本）
   participant R as stdin 读取循环
@@ -92,7 +164,7 @@ sequenceDiagram
   H->>R: 关闭 stdin（EOF）
   R->>R: inputClosed = true
   Q->>O: 当前运行结束，output.done()
-```
+:::
 
 先看读 stdin 的一侧。它的主体是一个 `for await`，每读到一条用户消息就入队、启动 `run()`；循环结束，说明 stdin 读完了：
 
@@ -225,6 +297,79 @@ flowchart TD
   B -->|"宿主回了别的 id"| G["忽略，继续等待<br/>没有超时"]
 ```
 
+同一个请求在等待时可能有不同的结局，按时间看钩子、宿主和 EOF 谁先到：
+
+::: steps 等待中的审批请求：谁先到听谁的
+--- 一个 `can_use_tool` 请求发出之前，规则和模式的结论是 `ask`，才会走到这里。
+sequenceDiagram
+  participant Q as run 循环
+  participant P as createCanUseTool
+  participant K as PermissionRequest 钩子
+  participant H as 宿主
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask
+--- `createCanUseTool` 同时做两件事：后台启动 PermissionRequest 钩子，立刻把请求发给宿主，不等钩子。最后 `Promise.race`（`structuredIO.ts` 第 577–611 行）。
+sequenceDiagram
+  participant Q as run 循环
+  participant P as createCanUseTool
+  participant K as PermissionRequest 钩子
+  participant H as 宿主
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask
+  P-)K: 后台启动钩子，不等它
+  P->>H: control_request can_use_tool（request_id）
+  Note over P,H: Promise.race，谁先给出结论听谁的
+--- **结局一：钩子抢先。** 先 `sdkPromise.catch(() => {})` 吞掉预期的取消异常，再 `abort()`，由 `sendRequest` 写出 `control_cancel_request`，宿主的对话框不必再等（第 613–620 行）。
+sequenceDiagram
+  participant Q as run 循环
+  participant P as createCanUseTool
+  participant K as PermissionRequest 钩子
+  participant H as 宿主
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask
+  P-)K: 后台启动钩子，不等它
+  P->>H: control_request can_use_tool（request_id）
+  Note over P,H: Promise.race，谁先给出结论听谁的
+  alt 钩子先决定
+    K-->>P: allow 或 deny
+    P->>H: control_cancel_request（撤销提问）
+    P-->>Q: 按钩子的决定走
+  end
+--- **结局二：宿主先回答。** 钩子的结果被丢弃（第 631–638 行）。回答里的 `updatedInput` 和 `message` 经 schema 校验后变成权限决定。
+sequenceDiagram
+  participant Q as run 循环
+  participant P as createCanUseTool
+  participant K as PermissionRequest 钩子
+  participant H as 宿主
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask
+  P-)K: 后台启动钩子，不等它
+  P->>H: control_request can_use_tool（request_id）
+  Note over P,H: Promise.race，谁先给出结论听谁的
+  alt 宿主先回答
+    H-->>P: control_response（同一个 request_id）
+    Note over K: 钩子的结论被丢弃
+    P-->>Q: allow 或 deny
+  end
+--- **结局三：EOF。** 读 stdin 的生成器读完后 `inputClosed = true`，等待中的请求全部 `reject`（第 254–260 行）；`createCanUseTool` 的 `catch` 把任何异常变成 `behavior: 'deny'`（第 639–649 行）。模型看到的是一次技术失败，不是用户的拒绝。中止信号同理，另外先写一条 `control_cancel_request`。
+sequenceDiagram
+  participant Q as run 循环
+  participant P as createCanUseTool
+  participant K as PermissionRequest 钩子
+  participant H as 宿主
+  Q->>P: canUseTool(Write, input)
+  Note over P: 规则和模式的结论是 ask
+  P-)K: 后台启动钩子，不等它
+  P->>H: control_request can_use_tool（request_id）
+  Note over P,H: Promise.race，谁先给出结论听谁的
+  alt 输入读完（EOF）
+    H--xP: 关闭 stdin
+    Note over P: pendingRequests 里的请求全部 reject
+    P-->>Q: deny，message = Tool permission request failed: …
+  end
+:::
+
+
 EOF 的那一支在读 stdin 的生成器里，数据读完以后：
 
 @cc cli/structuredIO.ts#L215-L261 hl=228-232,244-247,254-260
@@ -341,13 +486,33 @@ Learn Pi Agent 第 19 章给 mox 写了 `--mode json` 和 `--mode rpc`。两边�
 
 Pi 一侧其实也有“向宿主提问”的通道，不过它是为扩展的界面（对话框、通知）准备的：
 
+::: tabs
+@@ Pi
 @pi packages/coding-agent/src/modes/rpc/rpc-mode.ts#L90-L131 hl=97,109-120
+中止或超时时用调用方给的默认值 `resolve`，`confirm` 的默认值是 `false`。
+@@ Claude Code
+@cc cli/structuredIO.ts#L475-L531 hl=480-486,490-503,512-523,529
+没有超时；输入关了或信号中止就抛错，中止时先写 `control_cancel_request` 再 `reject`。
+@@ coda
+@code coda/src/io.mjs#L51-L81 hl=53-54,61-65
+照 Claude Code 写：`id` 配对，关了或取消就不问，取消时通知宿主再 `reject`。
+:::
 
 每个对话框一个 `id`，放进 `pendingExtensionRequests`，写一条 `extension_ui_request`。区别在于收场：信号中止（第 109–112 行）或者超时（第 115–120 行），不是抛错，而是用调用方给的默认值 `resolve`。`confirm` 的默认值是 `false`，所以对话框得不到回答等于拒绝。Claude Code 的审批请求没有超时，没人回答就一直等，它靠中止信号和 EOF 收场，收场的方式是 `reject` 加一句给模型看的话。这是两种取舍：Pi 把“等多久”放进协议，Claude Code 把它留给宿主。
 
 输入结束的处理也不一样。Pi 收到 stdin 的 `end` 就调用 `shutdown()`，最后走到 `session.dispose()`：
 
+::: tabs
+@@ Pi
 @pi packages/coding-agent/src/core/agent-session.ts#L1428-L1437 hl=1429-1435
+`dispose()` 先 `abort` 掉重试、压缩、Bash 和正在运行的 Agent，然后进程退出。
+@@ Claude Code
+@cc cli/structuredIO.ts#L215-L261 hl=228-232,244-247,254-260
+读完以后 `inputClosed = true`，等待中的请求全部 `reject`；正在运行的任务不受影响。
+@@ coda
+@code coda/src/io.mjs#L105-L111
+`close()` 拒绝所有等待者；`cli.mjs` 随后 `await job`，等运行做完。
+:::
 
 `dispose()` 先 `abort` 掉重试、压缩、Bash 和正在运行的 Agent，然后进程退出。mox 在 `end` 时等当前运行结束（第 19 章）。Claude Code 的做法最接近 mox，但多了一步：等待中的审批请求被拒绝，免得运行永远挂起。三种做法对应三个宿主：把 stdin 关闭当作“请退出”的信号，当作“不会再有新消息”，当作“这个会话作废”。你的宿主关闭 stdin 的时候想表达的是哪一种，决定了该怎么选。
 

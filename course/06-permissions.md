@@ -107,6 +107,142 @@ flowchart TD
 
 顺序是 **deny > ask（规则和安全检查）> bypass > allow**。
 
+::: steps hasPermissionsToUseToolInner 的台阶：谁先说话谁算数
+--- **1a**：整个工具的 deny 规则（没有括号的，如 `Bash`）。命中就返回 deny，后面一切不再看。第 1163 行先检查取消：按了 Esc 的任务不会再拿到授权。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::on -->|命中| DENY["deny"]:::on
+  A --> B["1b 整个工具的 ask 规则"]:::dim
+  B -->|命中| ASK["ask"]:::dim
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::dim --> D["1d 工具自己 deny"]:::dim
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::dim
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::dim
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::dim
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::dim
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::dim
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- **1b**：整个工具的 ask 规则，命中返回 ask。唯一例外是开着沙箱自动放行、而且这条命令确实会进沙箱（`canSandboxAutoAllow`，第 11 章），这时交给 Bash 自己判断。带括号的内容规则（`Bash(rm *)`）这一层看不见。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::on
+  B -->|命中| ASK["ask"]:::on
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::dim --> D["1d 工具自己 deny"]:::dim
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::dim
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::dim
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::dim
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::dim
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::dim
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- **1c**：把决定权交给工具自己的 `checkPermissions`，默认值是 `passthrough`（“我没有意见”）；输入解析抛了错（不是取消）只记日志，结果仍是 `passthrough`。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::done
+  B -->|命中| ASK["ask"]:::dim
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::on --> D["1d 工具自己 deny"]:::dim
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::dim
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::dim
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::dim
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::dim
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::dim
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- 随后四道关各自**直接返回**。**1d**：工具自己返回 deny，就是 deny；**1e**：必须有人参与的工具返回 ask，bypass 也不跳过。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::done
+  B -->|命中| ASK["ask"]:::dim
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::done --> D["1d 工具自己 deny"]:::on
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::on
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::dim
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::dim
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::dim
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::dim
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- **1f**：ask 若来自你写的**内容 ask 规则**（`Bash(git push *)`），不能被 bypass 跳过；**1g**：ask 若来自**安全检查**（`.git/`、`.claude/`、`.vscode/`、shell 配置文件），同样免疫 bypass。走到下面，说明规则和安全检查都没有异议。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::done
+  B -->|命中| ASK["ask"]:::on
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::done --> D["1d 工具自己 deny"]:::done
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::done
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::on
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::on
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::dim
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::dim
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- **2a**：bypass 模式在这里才放行。**2b**：整工具 allow 规则放行。它排在 1c 之后，所以 `allow: ["Edit"]` 压不过工具自己的 deny 和安全检查，却压得过工具自己的普通 ask。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::done
+  B -->|命中| ASK["ask"]:::dim
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::done --> D["1d 工具自己 deny"]:::done
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::done
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::done
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::done
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::on
+  H -->|是| ALLOW["allow"]:::on
+  H --> I["2b 整个工具的 allow 规则"]:::on
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::dim
+  J --> ASK
+--- **3**：工具返回的是 `passthrough`，就转成 ask；工具自己返回的 allow 或普通 ask 原样返回。整个顺序是 **deny > ask（规则和安全检查）> bypass > allow**。
+flowchart TD
+  A["1a 整个工具的 deny 规则"]:::done -->|命中| DENY["deny"]:::dim
+  A --> B["1b 整个工具的 ask 规则"]:::done
+  B -->|命中| ASK["ask"]:::on
+  B --> C["1c tool.checkPermissions<br/>默认 passthrough"]:::done --> D["1d 工具自己 deny"]:::done
+  D -->|是| DENY
+  D --> E["1e 必须有人参与的工具<br/>AskUserQuestion、ExitPlanMode"]:::done
+  E -->|是| ASK
+  E --> Fg["1f 内容 ask 规则<br/>如 Bash(git push *)"]:::done
+  Fg -->|"ask 来自内容规则"| ASK
+  Fg --> G["1g 安全检查<br/>.git、.claude、.vscode、shell 配置"]:::done
+  G -->|"ask 来自安全检查"| ASK
+  G --> H["2a bypass 模式"]:::done
+  H -->|是| ALLOW["allow"]:::dim
+  H --> I["2b 整个工具的 allow 规则"]:::done
+  I -->|命中| ALLOW
+  I --> J["3 passthrough 转成 ask<br/>工具自己的 allow / ask 原样返回"]:::on
+  J --> ASK
+:::
+
 ## 规则从哪里来：并集、整工具与内容
 
 @cc utils/permissions/permissions.ts#L109-L132 hl=109-114,125-131
@@ -172,6 +308,49 @@ deny 和 ask 用 `stripAllEnvVars: true`，allow 只用默认的“安全剥离�
 - **`NODE_OPTIONS=--require=x npm test`**：不在安全变量清单里，allow 规则匹配不上，要问用户；同一条规则写在 deny 里却匹配得上。`nohup FOO=bar timeout 5 rm` 里包装和变量交替出现，deny 侧反复剥离直到不再变化。**拒绝要宽，放行要窄。**
 - **`xargs rm`**：旧前缀写法 `Bash(rm:*)` 会命中，新通配符写法 `Bash(rm *)` **不会**，`xargs` 的特例只写在前缀分支里。看上去等价，其实不是。
 - **`ls*` 与 `ls:*`**：前者匹配 `lsof`，后者按词边界不匹配。`git *` 匹配单独的 `git`（结尾的“空格星号”让参数可省略），不匹配 `gitk`。
+
+::: steps echo hi && rm -f tmp.txt：复合命令按子命令逐个判断
+--- 模型发出一条复合命令。命令是自由文本，同一个效果有无数种写法，所以 `bashToolHasPermission` 先把整条命令拆成子命令（2.1.88 发布版走旧的 shell-quote 路径，tree-sitter 只在影子模式运行）。
+flowchart TD
+  CMD["echo hi && rm -f tmp.txt"]:::on --> SPLIT["bashToolHasPermission<br/>拆成子命令"]:::on
+  SPLIT --> S1["子命令 1：echo hi"]:::dim --> R1["bashToolCheckPermission<br/>allow 规则 Bash(echo *) 命中 → allow"]:::dim
+  SPLIT --> S2["子命令 2：rm -f tmp.txt"]:::dim --> R2["bashToolCheckPermission<br/>前缀 / 通配符 deny Bash(rm *) 命中 → deny"]:::dim
+  R1 --> AGG["汇总子命令的结果<br/>任何一个 deny，整条 deny"]:::dim
+  R2 --> AGG
+  AGG --> OUT["is_error 的 tool_result<br/>has been denied"]:::dim
+--- 子命令 1 `echo hi` 交给 `bashToolCheckPermission`：没有 deny、ask 规则，`Bash(echo *)` 这条 allow 规则命中，结果 allow。
+flowchart TD
+  CMD["echo hi && rm -f tmp.txt"]:::done --> SPLIT["bashToolHasPermission<br/>拆成子命令"]:::done
+  SPLIT --> S1["子命令 1：echo hi"]:::on --> R1["bashToolCheckPermission<br/>allow 规则 Bash(echo *) 命中 → allow"]:::on
+  SPLIT --> S2["子命令 2：rm -f tmp.txt"]:::dim --> R2["bashToolCheckPermission<br/>前缀 / 通配符 deny Bash(rm *) 命中 → deny"]:::dim
+  R1 --> AGG["汇总子命令的结果<br/>任何一个 deny，整条 deny"]:::dim
+  R2 --> AGG
+  AGG --> OUT["is_error 的 tool_result<br/>has been denied"]:::dim
+--- 子命令 2 `rm -f tmp.txt`：前缀和通配符的 deny 规则 `Bash(rm *)` 命中，结果 deny。deny 的匹配比 allow 宽，台阶里 deny 排在 allow 前面。
+flowchart TD
+  CMD["echo hi && rm -f tmp.txt"]:::done --> SPLIT["bashToolHasPermission<br/>拆成子命令"]:::done
+  SPLIT --> S1["子命令 1：echo hi"]:::done --> R1["bashToolCheckPermission<br/>allow 规则 Bash(echo *) 命中 → allow"]:::done
+  SPLIT --> S2["子命令 2：rm -f tmp.txt"]:::on --> R2["bashToolCheckPermission<br/>前缀 / 通配符 deny Bash(rm *) 命中 → deny"]:::on
+  R1 --> AGG["汇总子命令的结果<br/>任何一个 deny，整条 deny"]:::dim
+  R2 --> AGG
+  AGG --> OUT["is_error 的 tool_result<br/>has been denied"]:::dim
+--- 在 `bashToolHasPermission` 里汇总：任何一个子命令 deny，整条 deny；全部 allow 才 allow；其余合并成一次询问。这里一个 allow、一个 deny，所以整条 deny。
+flowchart TD
+  CMD["echo hi && rm -f tmp.txt"]:::done --> SPLIT["bashToolHasPermission<br/>拆成子命令"]:::done
+  SPLIT --> S1["子命令 1：echo hi"]:::done --> R1["bashToolCheckPermission<br/>allow 规则 Bash(echo *) 命中 → allow"]:::done
+  SPLIT --> S2["子命令 2：rm -f tmp.txt"]:::done --> R2["bashToolCheckPermission<br/>前缀 / 通配符 deny Bash(rm *) 命中 → deny"]:::done
+  R1 --> AGG["汇总子命令的结果<br/>任何一个 deny，整条 deny"]:::on
+  R2 --> AGG
+  AGG --> OUT["is_error 的 tool_result<br/>has been denied"]:::dim
+--- deny 变成 `is_error` 的结果交回模型，文案是 “has been denied”，告诉它别再试。这就是开头表格第 3 行：`echo` 被 allow，整条仍然被拒。
+flowchart TD
+  CMD["echo hi && rm -f tmp.txt"]:::done --> SPLIT["bashToolHasPermission<br/>拆成子命令"]:::done
+  SPLIT --> S1["子命令 1：echo hi"]:::done --> R1["bashToolCheckPermission<br/>allow 规则 Bash(echo *) 命中 → allow"]:::done
+  SPLIT --> S2["子命令 2：rm -f tmp.txt"]:::done --> R2["bashToolCheckPermission<br/>前缀 / 通配符 deny Bash(rm *) 命中 → deny"]:::done
+  R1 --> AGG["汇总子命令的结果<br/>任何一个 deny，整条 deny"]:::done
+  R2 --> AGG
+  AGG --> OUT["is_error 的 tool_result<br/>has been denied"]:::on
+:::
 
 子命令的结果在 `bashToolHasPermission` 里汇总：
 
@@ -260,7 +439,17 @@ auto 在外层把 ask 交给分类器，而不是用户（发布的 `cli.js` 里
 
 Pi 的核心里只有一个二值的闸门：
 
+::: tabs
+@@ Claude Code
+@cc services/tools/toolExecution.ts#L1023-L1037 hl=1023,1030-1036
+三值结果：不是 allow 的决定统一变成 `is_error` 的 `tool_result`，内容是决定里的 `message`。
+@@ Pi
 @pi packages/agent/src/agent-loop.ts#L738-L765 hl=739,755
+核心只认 `beforeToolCall` 返回的 `block`，没有“问一问”这个结果。
+@@ coda
+@code coda/src/permissions.mjs#permissionGate hl=185,187,189,191-193
+三段决策里的第三段：allow 放行，deny 拒绝，ask 交给人。
+:::
 
 `beforeToolCall` 返回 `{ block: true }` 就拦下，没有“问一问”这个结果，询问是扩展在回调里 `await` 界面完成的。Learn Pi Agent 第 14 章的权限扩展挂在这里，用同一套规则语法。把本章开头那组规则和调用原样交给它的 `decidePermission`：
 

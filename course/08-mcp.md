@@ -56,6 +56,115 @@ flowchart TD
   K -.-> Q["退出：cleanup 按 SIGINT、SIGTERM、SIGKILL 升级"]
 ```
 
+同一条链换成时间线来看：左边是 Claude Code，右边是服务器进程，每一步多出几条消息。
+
+::: steps 一个服务器从配置到退出：线上与客户端各做了什么
+--- **配置。** `getClaudeCodeMcpConfigs` 按“插件 < 用户 < 项目 < 本地”合并（`config.ts` 第 1231–1238 行）；项目里的 `.mcp.json` 要先过 `getProjectMcpServerStatus`，`-p` 模式直接视为批准。通过之后 `connectToServer` 建 `StdioClientTransport`，子进程被拉起。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+--- **握手。** `client.connect(transport)` 在 SDK 里，client.ts 只加了 30 秒的 `Promise.race`（第 1048–1080 行）。线上这一段是 2.1.296 的录制：先试探 `server/discover`，被拒绝才退回 `initialize`（2.1.88 的 SDK 直接从 `initialize` 开始）。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+  Note over K,S: 外面包一层 30 秒的 Promise.race
+  K->>S: server/discover（先试探新版协议）
+  S-->>K: 错误 Method not found
+  K->>S: initialize（声明 roots、elicitation）
+  S-->>K: capabilities、instructions
+  K->>S: notifications/initialized
+--- **列工具。** `fetchToolsForClient` 只发一次 `tools/list`，没有处理 `nextCursor`（第 1752–1755 行）；拿到列表先清洗 Unicode，再把每一项包装成 `Tool`，名字是 `mcp__issues__search_issues`（第 1758–1813 行）。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+  Note over K,S: 外面包一层 30 秒的 Promise.race
+  K->>S: server/discover（先试探新版协议）
+  S-->>K: 错误 Method not found
+  K->>S: initialize（声明 roots、elicitation）
+  S-->>K: capabilities、instructions
+  K->>S: notifications/initialized
+  K->>S: tools/list（只请求一次）
+  S-->>K: 8 个工具
+  Note over K: 清洗 Unicode，buildMcpToolName，描述截到 2048，包装成 Tool
+--- **调用。** 模型调用包装对象的 `call`，经 `callMCPTool` 变成 `tools/call`；结果由 `processMCPResult` 转成文字，`structuredContent` 排在 `content` 前面（第 2662–2706 行）。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+  Note over K,S: 外面包一层 30 秒的 Promise.race
+  K->>S: server/discover（先试探新版协议）
+  S-->>K: 错误 Method not found
+  K->>S: initialize（声明 roots、elicitation）
+  S-->>K: capabilities、instructions
+  K->>S: notifications/initialized
+  K->>S: tools/list（只请求一次）
+  S-->>K: 8 个工具
+  Note over K: 清洗 Unicode，buildMcpToolName，描述截到 2048，包装成 Tool
+  Note over K: 模型发出 mcp__issues__search_issues
+  K->>S: tools/call（_meta 带 toolUseId 和 progressToken）
+  S-->>K: result（含 structuredContent）
+  Note over K: processMCPResult，structuredContent 优先
+--- **列表会变。** 服务器声明了 `listChanged`，`enable_admin_tools` 执行时先发 `notifications/tools/list_changed`，客户端清缓存、重新 `tools/list`，整体替换这个服务器的工具（`useManageMCPConnections.ts` 第 616–664 行）。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+  Note over K,S: 外面包一层 30 秒的 Promise.race
+  K->>S: server/discover（先试探新版协议）
+  S-->>K: 错误 Method not found
+  K->>S: initialize（声明 roots、elicitation）
+  S-->>K: capabilities、instructions
+  K->>S: notifications/initialized
+  K->>S: tools/list（只请求一次）
+  S-->>K: 8 个工具
+  Note over K: 清洗 Unicode，buildMcpToolName，描述截到 2048，包装成 Tool
+  Note over K: 模型发出 mcp__issues__search_issues
+  K->>S: tools/call（_meta 带 toolUseId 和 progressToken）
+  S-->>K: result（含 structuredContent）
+  Note over K: processMCPResult，structuredContent 优先
+  K->>S: tools/call enable_admin_tools
+  S-->>K: notifications/tools/list_changed
+  S-->>K: result
+  K->>S: tools/list（重新取）
+  S-->>K: 9 个工具
+--- **退出。** 每个连接建好时 `registerCleanup` 登记了清理函数，退出时先 `SIGINT`、等 100ms，再 `SIGTERM`、等 400ms，最后 `SIGKILL`（`client.ts` 第 1479–1545 行），总共不超过半秒。
+sequenceDiagram
+  participant K as Claude Code (client.ts)
+  participant S as 服务器 issues
+  Note over K: getClaudeCodeMcpConfigs 合并作用域，项目服务器先过批准
+  K->>S: 拉起子进程（StdioClientTransport，stderr 接管）
+  Note over K,S: 外面包一层 30 秒的 Promise.race
+  K->>S: server/discover（先试探新版协议）
+  S-->>K: 错误 Method not found
+  K->>S: initialize（声明 roots、elicitation）
+  S-->>K: capabilities、instructions
+  K->>S: notifications/initialized
+  K->>S: tools/list（只请求一次）
+  S-->>K: 8 个工具
+  Note over K: 清洗 Unicode，buildMcpToolName，描述截到 2048，包装成 Tool
+  Note over K: 模型发出 mcp__issues__search_issues
+  K->>S: tools/call（_meta 带 toolUseId 和 progressToken）
+  S-->>K: result（含 structuredContent）
+  Note over K: processMCPResult，structuredContent 优先
+  K->>S: tools/call enable_admin_tools
+  S-->>K: notifications/tools/list_changed
+  S-->>K: result
+  K->>S: tools/list（重新取）
+  S-->>K: 9 个工具
+  Note over K,S: 会话结束，cleanup 登记过的函数被调用
+  K->>S: SIGINT，等 100ms
+  K->>S: SIGTERM，再等 400ms
+  K->>S: SIGKILL（还没退出才发）
+:::
+
 ## 配置：谁能让 Claude Code 启动一个进程
 
 `mcpServers` 里的每一项都是“运行这个命令”，所以第一个问题是信任：这份配置是谁写的？Claude Code 有好几个来源，合并的顺序写得很直白：
@@ -177,7 +286,26 @@ Claude Code 在权限上也是这个态度：
 
 `cancel` 做三件事：删掉本地的等待者和进度回调、给服务器发 `notifications/cancelled`、让 Promise 失败。超时（缺省 60 秒，Claude Code 调工具时换成了上面那个值）和 `signal` 的 abort 都走它。迟到的响应找不到等待者，直接丢弃。`resetTimeoutOnProgress` 缺省 `false`：收到进度不会重新计时，这是和 Pi 的一处差别。
 
-```mermaid
+::: steps 一次 tools/call 的三种结局
+--- `call` 补上 `_meta`（`claudecode/toolUseId`），交给 `callMCPTool`；`signal`（用户按 Esc）、`timeout`、`onprogress` 都交给 SDK 的 `callTool`（`client.ts` 第 3093–3115 行）。
+sequenceDiagram
+  participant M as 模型 / Toolset
+  participant C as call → callMCPTool
+  participant S as SDK Client
+  participant V as 服务器
+  M->>C: tool_use（已过校验、Hook、权限）
+  C->>S: callTool(name, arguments, _meta, signal, timeout)
+--- SDK 把请求发给服务器。有了 `onprogress`，SDK 才会在请求里放 `progressToken`，服务器可以据此发 `notifications/progress`，Claude Code 把它包成 `mcp_progress` 事件给界面。
+sequenceDiagram
+  participant M as 模型 / Toolset
+  participant C as call → callMCPTool
+  participant S as SDK Client
+  participant V as 服务器
+  M->>C: tool_use（已过校验、Hook、权限）
+  C->>S: callTool(name, arguments, _meta, signal, timeout)
+  S->>V: tools/call（带 progressToken）
+  V-->>S: notifications/progress（可选）
+--- **分支一：正常。** 服务器返回 `result`，交给 `processMCPResult`：`structuredContent` 优先，太大就存文件（第 2662–2706 行）。
 sequenceDiagram
   participant M as 模型 / Toolset
   participant C as call → callMCPTool
@@ -190,14 +318,36 @@ sequenceDiagram
   alt 正常
     V-->>S: result
     S-->>C: result → processMCPResult
-  else isError
+  end
+--- **分支二：`isError`。** 请求本身成功，结果里说工具失败。第 3124–3148 行把它**转成异常**，错误文字取第一个内容块的 `text`，没有就是 “Unknown error”；走“call 抛错”出口，变成 `is_error` 的 `tool_result`。
+sequenceDiagram
+  participant M as 模型 / Toolset
+  participant C as call → callMCPTool
+  participant S as SDK Client
+  participant V as 服务器
+  M->>C: tool_use（已过校验、Hook、权限）
+  C->>S: callTool(name, arguments, _meta, signal, timeout)
+  S->>V: tools/call（带 progressToken）
+  V-->>S: notifications/progress（可选）
+  alt isError
     V-->>S: result，isError 为 true
     C-->>M: 抛 McpToolCallError，变成 is_error
-  else 用户 Esc 或超时
+  end
+--- **分支三：用户 Esc 或超时。** SDK 的 `cancel` 删掉等待者、给服务器发 `notifications/cancelled`、让 Promise 失败。`abort` 时 `callMCPTool` 不抛异常，返回空内容，因为取消不算工具失败；迟到的响应找不到等待者，直接丢弃。
+sequenceDiagram
+  participant M as 模型 / Toolset
+  participant C as call → callMCPTool
+  participant S as SDK Client
+  participant V as 服务器
+  M->>C: tool_use（已过校验、Hook、权限）
+  C->>S: callTool(name, arguments, _meta, signal, timeout)
+  S->>V: tools/call（带 progressToken）
+  V-->>S: notifications/progress（可选）
+  alt 用户 Esc 或超时
     S->>V: notifications/cancelled
     S-->>C: 失败（abort 时 callMCPTool 返回空内容）
   end
-```
+:::
 
 异常有什么后果？回到第 3 章的流水线图：`call` 抛错走的是虚线出口，`formatError` 变成 `is_error` 的结果，触发 PostToolUseFailure，不触发 PostToolUse。MCP 工具还有一处特别：
 
@@ -301,6 +451,35 @@ MCP 工具默认就是推迟的，除非服务器在 `_meta` 里声明 `alwaysLo
 | 工具太多 | 默认推迟，状态在对话里 | direct / deferred / codemode / hidden | 没有 |
 
 两种路线的分歧是：协议层谁来拥有。Claude Code 用官方 SDK，省掉一大块工作，代价是行为受 SDK 版本牵制（读 cleanup 的注释就能看到它为 SDK 的 `close()` 不够用打的补丁）；Pi 和 mox 自己写，每一个边界情况都在手里，也都要自己担。Claude Code 在“缺省宽松”上更进一步：工具调用几乎不设期限，参数不在本地校验，把控制权交给服务器和用户的 Esc；Pi 倾向于客户端有主见，给期限，给分页，给进程组。
+
+表里有两行最适合直接对着代码看。第一行是工具名：Claude Code 只替换字符，Pi 还管长度和撞名，coda 照 Claude Code 写。
+
+::: tabs
+@@ Claude Code
+@cc services/mcp/normalization.ts#normalizeNameForMCP
+@cc services/mcp/mcpStringUtils.ts#buildMcpToolName
+只把 `[a-zA-Z0-9_-]` 以外的字符换成下划线；不看长度，不处理撞名。
+@@ Pi
+@pi packages/coding-agent/src/extensions/mcp/tools.ts#createMcpToolName
+连字符也换掉，超过 64 个字符或名字已被占用就加 8 位哈希后缀，撞名的两个都保留。
+@@ coda
+@code coda/src/mcp.mjs#L36-L39
+照 Claude Code 写：`normalizeMcpName` 加 `mcpToolName`，两行。
+:::
+
+另一行是结果取哪一部分，以及 `isError` 怎么处理：
+
+::: tabs
+@@ Claude Code
+@cc services/mcp/client.ts#L2662-L2706 hl=2675-2684,2686-2697,2700-2705
+`structuredContent` 排在 `content` 前面；`isError` 在更早的 `callMCPTool` 里变成异常。
+@@ Pi
+@pi packages/coding-agent/src/extensions/mcp/tools.ts#convertMcpResult
+有 content 就转 content，没有才退到结构化数据；`isError` 是带标记的结果，不是异常。
+@@ coda
+@code coda/src/mcp.mjs#convertResult hl=115-118,122-130,134
+`isError` 抛 `McpToolError`，然后 `structuredContent` 优先、再 `content`，太大存文件。
+:::
 
 ## coda 里的实现
 

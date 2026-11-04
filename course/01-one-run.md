@@ -128,9 +128,81 @@ flowchart TD
   C3 --> S
 ```
 
+::: steps queryLoop 走两圈：先执行工具，再放行结束
+--- 第 1 圈开头：`queryLoop` 把 `State` 解构成局部常量（311～321 行），然后整理上下文：取压缩边界之后的消息、限制工具结果体积、microcompact、autocompact。压缩只是每一圈开头的几个步骤。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::on --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::on --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::dim --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim -->|有| T["执行工具<br/>流式执行器 / runTools"]:::dim --> Q["取走排队的消息<br/>附件、预取结果"]:::dim --> L["turnCount + 1 > maxTurns？"]:::dim
+  L["turnCount + 1 > maxTurns？"]:::dim -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::dim
+  C["next_turn<br/>重写 State，turnCount + 1"]:::dim -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::on
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 请求模型。每个内容块一结束就 yield 一条 assistant 消息；开着流式工具执行时，`tool_use` 块一到就交给执行器，工具在模型还在输出时已经开始跑。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::done --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::on --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim -->|有| T["执行工具<br/>流式执行器 / runTools"]:::dim --> Q["取走排队的消息<br/>附件、预取结果"]:::dim --> L["turnCount + 1 > maxTurns？"]:::dim
+  L["turnCount + 1 > maxTurns？"]:::dim -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::dim
+  C["next_turn<br/>重写 State，turnCount + 1"]:::dim -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::dim -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 流结束后看 `needsFollowUp`：流里出现过 `tool_use` 块就为真（不看 `stop_reason`）。这一圈为真，进入工具路径，执行（并等待）这一批工具。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::done --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::done --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on -->|有| T["执行工具<br/>流式执行器 / runTools"]:::on --> Q["取走排队的消息<br/>附件、预取结果"]:::dim --> L["turnCount + 1 > maxTurns？"]:::dim
+  L["turnCount + 1 > maxTurns？"]:::dim -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::dim
+  C["next_turn<br/>重写 State，turnCount + 1"]:::dim -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 工具执行完，取走排队的消息（用户中途又输入的，作为 `queued_command` 附件追加在结果后面），再比较 `turnCount + 1` 与 `maxTurns`，没超就继续。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::done --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::done --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|有| T["执行工具<br/>流式执行器 / runTools"]:::done --> Q["取走排队的消息<br/>附件、预取结果"]:::on --> L["turnCount + 1 > maxTurns？"]:::on
+  L["turnCount + 1 > maxTurns？"]:::on -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::dim
+  C["next_turn<br/>重写 State，turnCount + 1"]:::dim -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 写出 `next_turn` 的 State：消息 = 旧历史 + 回复 + 工具结果 + 排队消息，`turnCount` 加 1，续写计数清零，`transition` 记下原因，`continue` 回到 `while` 开头。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::on --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::done --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|有| T["执行工具<br/>流式执行器 / runTools"]:::done --> Q["取走排队的消息<br/>附件、预取结果"]:::done --> L["turnCount + 1 > maxTurns？"]:::done
+  L["turnCount + 1 > maxTurns？"]:::done -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::on
+  C["next_turn<br/>重写 State，turnCount + 1"]:::on -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::on
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 第 2 圈：请求模型，这次只回了一段文字，没有 `tool_use` 块，`needsFollowUp` 为假，进入 `!needsFollowUp` 分支。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::done --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::on --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on -->|有| T["执行工具<br/>流式执行器 / runTools"]:::done --> Q["取走排队的消息<br/>附件、预取结果"]:::done --> L["turnCount + 1 > maxTurns？"]:::done
+  L["turnCount + 1 > maxTurns？"]:::done -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::done
+  C["next_turn<br/>重写 State，turnCount + 1"]:::done -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::on -->|没有| H["Stop Hook"]:::dim
+  H["Stop Hook"]:::dim -->|放行| X["completed"]:::dim
+--- 没有被截断，也没有 API 错误，于是运行 Stop Hook（`handleStopHooks`）。放行，循环以 `completed` 退出。这就是录制里 `terminal_reason: "completed"` 的来历。
+flowchart TD
+  S["State<br/>messages · turnCount · transition"]:::done --> P["整理上下文<br/>压缩边界 → 工具预算 → microcompact → autocompact"]:::done --> M["请求模型（流式）<br/>每个内容块到达就 yield"]:::done --> N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|有| T["执行工具<br/>流式执行器 / runTools"]:::done --> Q["取走排队的消息<br/>附件、预取结果"]:::done --> L["turnCount + 1 > maxTurns？"]:::done
+  L["turnCount + 1 > maxTurns？"]:::done -->|否| C["next_turn<br/>重写 State，turnCount + 1"]:::done
+  C["next_turn<br/>重写 State，turnCount + 1"]:::done -.->|回到 while 开头| S["State<br/>messages · turnCount · transition"]:::done
+  N["needsFollowUp？<br/>流里出现过 tool_use 块？"]:::done -->|没有| H["Stop Hook"]:::on
+  H["Stop Hook"]:::on -->|放行| X["completed"]:::on
+:::
+
 双线方框是“继续”，圆角框是“退出”。先看“要不要继续”这个判断是怎么做的：
 
+::: tabs
+@@ Claude Code
 @cc query.ts#L551-L558
+流式接收时只要有 `tool_use` 块到达，`needsFollowUp` 就置真，它是唯一的出口信号。
+@@ Pi
+@pi packages/agent/src/agent-loop.ts#L268-L282
+`toolCalls.length > 0` 才执行工具并设 `hasMoreToolCalls`；`length` 截断时整批拒绝（后面细讲）。
+@@ mox
+@mox mox/src/loop.ts#L91-L95
+和 Pi 同一套：看有没有工具调用，截断时拒绝整批。
+@@ coda
+@code coda/src/engine.mjs#L138-L143
+`needsFollowUp = assistant.calls.length > 0`，截断分支只在没有工具调用时进入。
+:::
 
 注释是这个循环最重要的一句话：`stop_reason === 'tool_use'` 不可靠，有时不会被正确设置；**流式接收过程中有没有 `tool_use` 块到达，是唯一的循环出口信号**。Pi 的 `runLoop` 同样看有没有工具调用，mox 照搬。分歧在下面：循环怎么对待另一个停止原因，`max_tokens`。先看这个信号是在流里怎么置位的：
 
@@ -170,6 +242,63 @@ Anthropic API 把 `stop_reason` 放在最后的 `message_delta` 事件里。这�
 - 1232～1236 行：新的历史是 `messagesForQuery + assistantMessages + 提示`——半截回复**留在历史里**，模型从断开处续写。合成的错误消息混在 `assistantMessages` 里，但构造请求时会被过滤掉（`normalizeMessagesForAPI` 丢弃合成的 API 错误消息）。
 - 1239、1244 行：`maxOutputTokensRecoveryCount + 1`，`turnCount` 不变——续写不算新的一轮，`transition` 记下第几次。
 - 1254～1255 行：续写满 3 次还被截断，才把一直扣着的错误 yield 出去，显示给用户。随后 1262 行的 `isApiErrorMessage` 判断让循环以 `completed` 退出，**跳过 Stop Hook**。
+
+::: steps 输出被截断且没有工具调用：续写直到用尽
+--- 模型的输出撞上 `max_tokens`。`claude.ts` 在 `message_delta` 里看到停止原因，**额外 yield 一条合成的 assistant 消息**，带 `apiError: 'max_output_tokens'`。真正的内容块早已各自 yield 出去，用户看到了半截回复。
+flowchart TD
+  M["请求模型（流式）"]:::on --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::on --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::dim --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::dim --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::dim --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::dim
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim -.-> M["请求模型（流式）"]:::on
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim -.-> M["请求模型（流式）"]:::on
+--- `queryLoop` 把这条可恢复的错误**扣下**（`withheld`），不 yield 给调用者，免得 SDK 调用方看到 `error` 就终止会话。半截回复仍在 `assistantMessages` 里。
+flowchart TD
+  M["请求模型（流式）"]:::done --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::done --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::on --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::dim --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::dim -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::dim --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::dim
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim -.-> M["请求模型（流式）"]:::done
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim -.-> M["请求模型（流式）"]:::done
+--- 流里没有 `tool_use` 块，进入 `!needsFollowUp` 分支，`isWithheldMaxOutputTokens(lastMessage)` 为真。先问第一招：灰度开关 `tengu_otk_slot_v1` 开着、用户没设 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`、这一轮还没升级过吗？
+flowchart TD
+  M["请求模型（流式）"]:::done --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::done --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::done --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::on --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::on
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::on -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::on -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::dim --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::dim
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim -.-> M["请求模型（流式）"]:::done
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim -.-> M["请求模型（流式）"]:::done
+--- 条件都满足才走 `max_output_tokens_escalate`：**同一个请求**，`messages` 还是 `messagesForQuery`（半截回复丢掉），只把输出上限升到 64k 重发。只会触发一次；录制里它没有生效。
+flowchart TD
+  M["请求模型（流式）"]:::done --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::done --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::done --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::done --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::on
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::dim -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::dim --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::dim
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::on -.-> M["请求模型（流式）"]:::done
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim -.-> M["请求模型（流式）"]:::done
+--- 第二招人人走得到：续写次数不到 3，就构造一条 `isMeta` 的用户消息（“直接接着写，不道歉、不复述”），历史 = `messagesForQuery` + 半截回复 + 提示。`maxOutputTokensRecoveryCount` 加 1，`turnCount` 不变，回到 `while` 开头。
+flowchart TD
+  M["请求模型（流式）"]:::done --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::done --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::done --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::done --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::on
+  REC["maxOutputTokensRecoveryCount < 3？"]:::on -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::on
+  REC["maxOutputTokensRecoveryCount < 3？"]:::on -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::dim --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::dim
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim -.-> M["请求模型（流式）"]:::done
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::on -.-> M["请求模型（流式）"]:::done
+--- 续写满 3 次还被截断，才 `yield lastMessage` 把一直扣着的错误交给用户。随后 `lastMessage?.isApiErrorMessage` 为真，循环以 `completed` 退出，**跳过 Stop Hook**。
+flowchart TD
+  M["请求模型（流式）"]:::done --> SYN["claude.ts：stop_reason 是 max_tokens<br/>yield 合成消息 apiError: max_output_tokens"]:::done --> WH["queryLoop：withheld 扣下<br/>半截回复已在 assistantMessages"]:::done --> NF["!needsFollowUp<br/>isWithheldMaxOutputTokens"]:::done --> ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|是| E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim
+  ESC["tengu_otk_slot_v1 打开<br/>且没指定上限、未升级过？"]:::done -->|否| REC["maxOutputTokensRecoveryCount < 3？"]:::done
+  REC["maxOutputTokensRecoveryCount < 3？"]:::done -->|是| R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim
+  REC["maxOutputTokensRecoveryCount < 3？"]:::done -->|"否（已续写 3 次）"| Y["yield 被扣下的错误"]:::on --> D["completed<br/>isApiErrorMessage：跳过 Stop Hook"]:::on
+  E1["max_output_tokens_escalate<br/>同一请求 max_tokens 升到 64k 重发"]:::dim -.-> M["请求模型（流式）"]:::done
+  R1["max_output_tokens_recovery<br/>历史 + 半截回复 + 续写提示<br/>计数 + 1，turnCount 不变"]:::dim -.-> M["请求模型（流式）"]:::done
+:::
 
 整个分支在 `if (!needsFollowUp)` 里面。这一点决定了下一种情形。
 

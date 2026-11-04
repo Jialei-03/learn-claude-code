@@ -97,18 +97,53 @@ flowchart TD
 
 @lab node --disable-warning=ExperimentalWarning labs/ch05/transcript.mjs dag
 
-```mermaid
+::: steps 单链遍历走丢了两行，recoverOrphanedParallelToolResults 把它们补回来
+--- 模型一次回复调用了三个 Read。流式输出时每个内容块一条记录，三条 tool_use 的 `message.id` 相同、uuid 不同。每条 `tool_result` 的父亲是**发起它的那条 assistant 记录**（`sourceToolAssistantUUID`），所以文件里是一张有向无环图，不是一条链。
 flowchart TD
-  L15["15 文字：I'll read the three files"] --> L16["16 调用 Read a.js"]
-  L16 --> L17["17 调用 Read b.js"]
-  L17 --> L18["18 结果 ← b.js"]
-  L16 --> L19["19 结果 ← a.js"]
-  L19 --> L20["20 调用 Read c.js"]
-  L20 --> L21["21 结果 ← c.js"]
-  L21 --> L28["…叶子（第 28 行）"]
-  style L17 stroke-dasharray: 5 5
-  style L18 stroke-dasharray: 5 5
-```
+  L15["15 文字：I'll read the three files"]:::done --> L16["16 调用 Read a.js"]:::on
+  L16 --> L17["17 调用 Read b.js"]:::on
+  L17 --> L18["18 结果 ← b.js"]:::dim
+  L16 --> L19["19 结果 ← a.js"]:::dim
+  L19 --> L20["20 调用 Read c.js"]:::on
+  L20 --> L21["21 结果 ← c.js"]:::dim
+  L21 --> L28["…叶子（第 28 行）"]:::dim
+--- `--resume` 走 `getLastSessionLog`：整个文件读成 uuid → 记录的表，`findLatestMessage` 选出**时间戳最新**的非 sidechain 消息当叶子（不是“文件最后一行”）。这里是第 28 行。
+flowchart TD
+  L15["15 文字：I'll read the three files"]:::dim --> L16["16 调用 Read a.js"]:::dim
+  L16 --> L17["17 调用 Read b.js"]:::dim
+  L17 --> L18["18 结果 ← b.js"]:::dim
+  L16 --> L19["19 结果 ← a.js"]:::dim
+  L19 --> L20["20 调用 Read c.js"]:::dim
+  L20 --> L21["21 结果 ← c.js"]:::dim
+  L21 --> L28["…叶子（第 28 行）"]:::on
+--- `buildConversationChain` 沿 `parentUuid` 往上走：叶子 → 21 → 20 → 19 → 16 → 15。走完反转，得到 21 行。`seen` 集合防止环。
+flowchart TD
+  L15["15 文字：I'll read the three files"]:::on --> L16["16 调用 Read a.js"]:::on
+  L16 --> L17["17 调用 Read b.js"]:::dim
+  L17 --> L18["18 结果 ← b.js"]:::dim
+  L16 --> L19["19 结果 ← a.js"]:::on
+  L19 --> L20["20 调用 Read c.js"]:::on
+  L20 --> L21["21 结果 ← c.js"]:::on
+  L21 --> L28["…叶子（第 28 行）"]:::on
+--- 第 17、18 行（b.js 的调用和结果）不在这条路上：从叶子往回走，只会经过 19，不会经过 17。单链遍历把它们丢了。如果不管，模型会看到 a、c 的结果，却看不到 b。
+flowchart TD
+  L15["15 文字：I'll read the three files"]:::done --> L16["16 调用 Read a.js"]:::done
+  L16 --> L17["17 调用 Read b.js"]:::on
+  L17 --> L18["18 结果 ← b.js"]:::on
+  L16 --> L19["19 结果 ← a.js"]:::done
+  L19 --> L20["20 调用 Read c.js"]:::done
+  L20 --> L21["21 结果 ← c.js"]:::done
+  L21 --> L28["…叶子（第 28 行）"]:::done
+--- 后处理 `recoverOrphanedParallelToolResults` 按 `message.id` 把同一次回复的兄弟记录和它们的结果找回来，插在该组最后一个链上成员（第 20 行）后面。最终是 23 行，17、18 排在 20 和 21 之间。
+flowchart TD
+  L15["15 文字：I'll read the three files"]:::done --> L16["16 调用 Read a.js"]:::done
+  L16 --> L17["17 调用 Read b.js"]:::on
+  L17 --> L18["18 结果 ← b.js"]:::on
+  L16 --> L19["19 结果 ← a.js"]:::done
+  L19 --> L20["20 调用 Read c.js"]:::done
+  L20 --> L21["21 结果 ← c.js"]:::done
+  L21 --> L28["…叶子（第 28 行）"]:::done
+:::
 
 从叶子往回走，经过 21、20、19，再到 16——第 17、18 行（b.js 的调用和结果）不在这条路上，被单链遍历丢掉了。原因写在后处理函数的注释里：
 
@@ -154,7 +189,86 @@ coda 的 `restore` 做同样的整理，对照原函数跑五种场景：
 
 整个过程在代码里是这样走的：
 
-```mermaid
+::: steps 一次自动压缩：从 microcompact 到新的根
+--- `queryLoop` 每一圈在发请求之前，先做便宜的 `microcompact`（第 412 行的注释就是这条顺序的出处）。2.1.88 里它只有两个分支：时间触发默认关，缓存编辑被编译掉，所以默认原样返回。
+sequenceDiagram
+  participant Q as queryLoop（每一圈）
+  participant M as microcompact
+  participant A as autoCompactIfNeeded
+  participant C as compactConversation
+  participant S as 摘要模型（fork）
+  participant F as 会话文件
+  rect rgb(255,230,213)
+    Q->>M: 先做便宜的：旧工具结果还要不要留
+    M-->>Q: 2.1.88 默认原样返回
+  end
+--- 接着 `autoCompactIfNeeded` 问：当前大小（`tokenCountWithEstimation`）是否到了触发线 = 有效窗口 − 13000？到了，并且连续失败不到 3 次，就调用 `compactConversation`。
+sequenceDiagram
+  participant Q as queryLoop（每一圈）
+  participant M as microcompact
+  participant A as autoCompactIfNeeded
+  participant C as compactConversation
+  participant S as 摘要模型（fork）
+  participant F as 会话文件
+  Q->>M: 先做便宜的：旧工具结果还要不要留
+  M-->>Q: 2.1.88 默认原样返回
+  rect rgb(255,230,213)
+    Q->>A: 上下文 ≥ 触发线吗？
+    A->>C: 是（连续失败不到 3 次）
+  end
+--- `compactConversation` 先跑 PreCompact Hook，然后用 `runForkedAgent` 起一个只跑一轮的分身：把主对话的 `cacheSafeParams`（系统提示、工具、模型、消息前缀）**原样重发**，只多一条压缩指令，借用主对话的提示缓存。
+sequenceDiagram
+  participant Q as queryLoop（每一圈）
+  participant M as microcompact
+  participant A as autoCompactIfNeeded
+  participant C as compactConversation
+  participant S as 摘要模型（fork）
+  participant F as 会话文件
+  Q->>M: 先做便宜的：旧工具结果还要不要留
+  M-->>Q: 2.1.88 默认原样返回
+  Q->>A: 上下文 ≥ 触发线吗？
+  A->>C: 是（连续失败不到 3 次）
+  rect rgb(255,230,213)
+    C->>C: PreCompact Hook
+    C->>S: 上一个请求原样重发 + 压缩指令
+  end
+--- 摘要模型先写一段 `<analysis>` 草稿，再写 `<summary>`，九节格式，其中有“全部用户消息”。`formatCompactSummary` 之后会剥掉草稿。
+sequenceDiagram
+  participant Q as queryLoop（每一圈）
+  participant M as microcompact
+  participant A as autoCompactIfNeeded
+  participant C as compactConversation
+  participant S as 摘要模型（fork）
+  participant F as 会话文件
+  Q->>M: 先做便宜的：旧工具结果还要不要留
+  M-->>Q: 2.1.88 默认原样返回
+  Q->>A: 上下文 ≥ 触发线吗？
+  A->>C: 是（连续失败不到 3 次）
+  C->>C: PreCompact Hook
+  C->>S: 上一个请求原样重发 + 压缩指令
+  rect rgb(255,230,213)
+    S-->>C: <analysis> 草稿 + <summary> 正文
+  end
+--- 摘要之后重新附上几样东西：最近读过的文件（最多 5 个，每个限 5000 token）、计划、用过的 Skill、各种增量声明，再跑一次 SessionStart（`source=compact`）Hook。返回的是边界、摘要、附件和 Hook 结果。
+sequenceDiagram
+  participant Q as queryLoop（每一圈）
+  participant M as microcompact
+  participant A as autoCompactIfNeeded
+  participant C as compactConversation
+  participant S as 摘要模型（fork）
+  participant F as 会话文件
+  Q->>M: 先做便宜的：旧工具结果还要不要留
+  M-->>Q: 2.1.88 默认原样返回
+  Q->>A: 上下文 ≥ 触发线吗？
+  A->>C: 是（连续失败不到 3 次）
+  C->>C: PreCompact Hook
+  C->>S: 上一个请求原样重发 + 压缩指令
+  S-->>C: <analysis> 草稿 + <summary> 正文
+  rect rgb(255,230,213)
+    C->>C: 重新读最近的文件 · SessionStart(compact) Hook
+    C-->>Q: 边界 · 摘要 · 附件 · Hook 结果
+  end
+--- 会话文件里追加这几条：边界的 `parentUuid` 为 `null`，是一个新的根。然后用压缩后的消息发出这一圈的请求，缓存要从头重建。
 sequenceDiagram
   participant Q as queryLoop（每一圈）
   participant M as microcompact
@@ -171,9 +285,11 @@ sequenceDiagram
   S-->>C: <analysis> 草稿 + <summary> 正文
   C->>C: 重新读最近的文件 · SessionStart(compact) Hook
   C-->>Q: 边界 · 摘要 · 附件 · Hook 结果
-  Q->>F: 追加：边界是新的根（parentUuid = null）
-  Q->>Q: 用压缩后的消息发出这一圈的请求
-```
+  rect rgb(255,230,213)
+    Q->>F: 追加：边界是新的根（parentUuid = null）
+    Q->>Q: 用压缩后的消息发出这一圈的请求
+  end
+:::
 
 顺序先看源码。`query.ts` 每一圈在发请求之前，先 microcompact，再 autocompact：
 
@@ -231,7 +347,20 @@ sequenceDiagram
 
 真正的压缩是 `compactConversation`，手动 `/compact` 和自动压缩走的是同一个函数，只有三处不同：手动的 `/compact 说明文字` 会把说明文字作为附加指令拼进提示词（并且先合并 PreCompact Hook 给的指令）；自动压缩要求摘要之后“直接接着做，别问用户”；手动压缩出错会弹出提示，自动压缩的失败静悄悄地等下一圈重试。最值得读的是摘要请求怎么发：
 
+::: tabs
+@@ Claude Code
 @cc services/compact/compact.ts#L1178-L1200 hl=1181-1187,1189-1195
+分身带着主对话的缓存键参数，原样重发再加一句指令。
+@@ Pi
+@pi packages/coding-agent/src/core/compaction/compaction.ts#L644-L695
+把旧对话序列化成文字，配专门的摘要系统提示，另起一个请求。
+@@ mox
+@mox mox/src/compaction.ts#summaryPrompt
+同 Pi：序列化后塞进一条摘要提示。
+@@ coda
+@code coda/src/compact.mjs#summaryRequest
+照 Claude Code：在原请求后面追加压缩指令，前缀逐字不变。
+:::
 
 它用 `runForkedAgent` 起一个只跑一轮的分身，把主对话的 `cacheSafeParams`（系统提示、工具、模型、消息前缀）原样带过去，只多一条压缩指令。注释说得很直白：**不要设置 `maxOutputTokens`**，它会改动思考预算，让缓存键对不上，缓存整个作废。工具定义也照发，哪怕不让用——这个矛盾在提示词的开头有交代：
 

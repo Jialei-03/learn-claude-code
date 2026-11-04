@@ -67,6 +67,116 @@ flowchart TD
   I --> D
 ```
 
+沿着右边“每条 Bash 命令”那一支，用第 7 章留下的那个洞（Python 读 `.env`）走一遍：
+
+::: steps 一条 Bash 命令被包进沙箱
+--- 模型要运行 `python3 -c "print(open('.env').read())"`，设置里已经 `deny` 了 `Read(./.env)`，权限模式是手动。BashTool 把 `command` 和 `dangerouslyDisableSandbox` 交给判断。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::on
+  D{"shouldUseSandbox"}:::dim
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::dim
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::dim
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::dim
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::dim
+  K["内核：打开 .env → EPERM"]:::dim
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **第一关**：`shouldUseSandbox` 的四个出口都没走到（沙箱启用、没带 `dangerouslyDisableSandbox`、有命令、没命中 `excludedCommands`），返回 `true`（`shouldUseSandbox.ts` 第 131–150 行）。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::on
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::dim
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::dim
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::dim
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::dim
+  K["内核：打开 .env → EPERM"]:::dim
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **免询问**：`checkSandboxAutoAllow` 先查 deny、再查 ask，都没命中，才返回 `allow`，理由是 “Auto-allowed with sandbox”（`bashPermissions.ts` 第 1277–1358 行）。边界由沙箱保证，不再逐条问用户。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::done
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::on
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::dim
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::dim
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::dim
+  K["内核：打开 .env → EPERM"]:::dim
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **组装**：shell provider 把命令拼成一整串：先 `source` 快照，再 `eval` 模型写的命令，最后 `pwd -P` 记下工作目录（`bashProvider.ts` 第 156–187 行）。沙箱要包的是这一整串，不是原始命令，所以报错里会出现 `(eval):1:`。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::done
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::done
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::on
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::dim
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::dim
+  K["内核：打开 .env → EPERM"]:::dim
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **包装**：`wrapWithSandbox` 在初始化完成后才会放行（`sandbox-adapter.ts` 第 711–716 行），交给 sandbox-runtime 拼成 `env … sandbox-exec -p <配置> <shell> -c <整串>`（`macos-sandbox-utils.ts` 第 1523–1537 行）。出来的还是一个字符串，`Shell.ts` 再把它交给 `spawn`（第 256–273 行）。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::done
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::done
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::done
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::on
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::dim
+  K["内核：打开 .env → EPERM"]:::dim
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **运行**：配置以 `(deny default)` 起头，读先放开、再按 `denyRead` 逐项禁止。Python 的 `open('.env')` 被内核拒绝，得到 `PermissionError`，拦下它的不是 Claude Code 的任何一行代码。网络那一支则只能走本机代理。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::done
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::done
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::done
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::done
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::on
+  K["内核：打开 .env → EPERM"]:::on
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::dim
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+--- **收尾**：命令结束后 `cleanupAfterCommand` 清理占位文件（`Shell.ts` 第 391–393 行）；被拒绝的操作由 `annotateStderr` 追加成 `<sandbox_violations>`（`BashTool.tsx` 第 709–710 行），模型因此知道**为什么**失败。
+flowchart TD
+  B["Bash 调用<br/>python3 读取 .env"]:::done
+  D{"shouldUseSandbox"}:::done
+  A["checkSandboxAutoAllow<br/>deny / ask 规则仍然先行"]:::done
+  E["Shell.exec：buildExecCommand<br/>source 快照 + eval 命令 + pwd -P"]:::done
+  W["wrapWithSandbox<br/>字符串进，字符串出"]:::done
+  P["子进程运行<br/>env … sandbox-exec -p 配置 shell -c 整串"]:::done
+  K["内核：打开 .env → EPERM"]:::done
+  R["代理：按域名放行或拒绝"]:::dim
+  F["cleanupAfterCommand<br/>annotateStderr → sandbox_violations"]:::on
+  B --> D --> A --> E --> W --> P
+  P --> K
+  P --> R
+  P --> F
+:::
+
 ## 权限规则怎样变成沙箱配置
 
 `utils/sandbox/sandbox-adapter.ts` 是 Claude Code 和 sandbox-runtime 之间的一层薄翻译：它自己不隔离任何东西，只回答一个问题——用户的设置和权限规则，对应沙箱该限制什么。入口是 `convertToSandboxRuntimeConfig`，产出的配置有两块：`network`（允许和拒绝的域名）和 `filesystem`（`allowWrite`、`denyWrite`、`denyRead`、`allowRead`）。它很长，分三段读。
@@ -230,6 +340,69 @@ Linux 没有 seatbelt，用的是 bubblewrap（`bwrap`）。它不写规则，�
 - 387 行：先用 URL 解析器**规范化**主机名。`2852039166` 和 `169.254.169.254`（云服务器的元数据地址）是同一个地址，不规范化，拒绝名单就形同虚设。
 - 413–431 行：名单之外，才调用宿主程序传进来的询问回调。回调返回 `false` 得到 `user denied`，抛异常得到 `permission prompt failed`，没有回调（或严格白名单）得到 `host is not on the allow list`。录制第 8 行的 `(user denied)` 就是回调返回了 `false`：那次运行是非交互的，没有人可问。交互界面里这个回调会弹出一个对话框（`REPL.tsx` 的 `sandboxAskCallback`）；`-p` 和 SDK 模式里则转成一个 `can_use_tool` 控制请求，工具名叫 `SandboxNetworkAccess`（`structuredIO.ts` 的 `createSandboxAskCallback`），第 12 章会看到它。
 
+::: steps 代理怎样决定一个域名
+--- 命令里没有一个程序被告知“请走代理”，它们是被环境变量带过去的。录制第 8 行，`curl` 向 `example.org` 发起连接，代理把它交给 `filterNetworkRequest`（`sandbox-manager.ts`）。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::on
+  V["isValidHost<br/>控制字符 → malformed host"]:::dim
+  C["canonicalizeHost<br/>规范化主机名"]:::dim
+  DL["deniedDomains<br/>命中 → 拒绝"]:::dim
+  AL["allowedDomains<br/>命中 → 放行"]:::dim
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::dim
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+--- **先验主机名**：`isValidHost` 拒绝带控制字符的主机，比如 `evil.com\x00.allowed.com`，免得 `endsWith` 被空字符骗过（第 377–382 行）。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::done
+  V["isValidHost<br/>控制字符 → malformed host"]:::on
+  C["canonicalizeHost<br/>规范化主机名"]:::dim
+  DL["deniedDomains<br/>命中 → 拒绝"]:::dim
+  AL["allowedDomains<br/>命中 → 放行"]:::dim
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::dim
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+--- **再规范化**：`2852039166` 和 `127.1` 这类写法要先变成 `getaddrinfo()` 真正会拨的形式，否则拒绝名单形同虚设（第 387 行）。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::done
+  V["isValidHost<br/>控制字符 → malformed host"]:::done
+  C["canonicalizeHost<br/>规范化主机名"]:::on
+  DL["deniedDomains<br/>命中 → 拒绝"]:::dim
+  AL["allowedDomains<br/>命中 → 放行"]:::dim
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::dim
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+--- **先看拒绝名单**：任何一条命中就拒绝，理由取该条目自己的说明或 `host is on the deny list`（第 390–402 行）。这里没有命中。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::done
+  V["isValidHost<br/>控制字符 → malformed host"]:::done
+  C["canonicalizeHost<br/>规范化主机名"]:::done
+  DL["deniedDomains<br/>命中 → 拒绝"]:::on
+  AL["allowedDomains<br/>命中 → 放行"]:::dim
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::dim
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+--- **再看允许名单**：设置里只放行了 `example.com`，`example.org` 不命中。命中的话到这里就返回 `true`（第 404–409 行）。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::done
+  V["isValidHost<br/>控制字符 → malformed host"]:::done
+  C["canonicalizeHost<br/>规范化主机名"]:::done
+  DL["deniedDomains<br/>命中 → 拒绝"]:::done
+  AL["allowedDomains<br/>命中 → 放行"]:::on
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::dim
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+--- **最后问人**：没有回调或严格白名单，直接得到 `host is not on the allow list`；有回调就去问（第 413–431 行）。录制是非交互的，回调返回 `false`，所以是 `user denied`；被拒绝的连接记下来，模型在 `<sandbox_violations>` 里读到。
+flowchart TD
+  REQ["代理收到请求<br/>example.org:443"]:::done
+  V["isValidHost<br/>控制字符 → malformed host"]:::done
+  C["canonicalizeHost<br/>规范化主机名"]:::done
+  DL["deniedDomains<br/>命中 → 拒绝"]:::done
+  AL["allowedDomains<br/>命中 → 放行"]:::done
+  ASK["sandboxAskCallback<br/>没有回调 → 拒绝"]:::on
+  OUT["拒绝：user denied<br/>记下来，命令结束后追加 sandbox_violations"]:::dim
+  REQ --> V --> C --> DL --> AL --> ASK --> OUT
+:::
+
 coda 的 `networkDecision` 是同一个流程的简化版。下面这张表用它跑几个典型的主机名，包括上面两个攻击例子：
 
 @lab node --disable-warning=ExperimentalWarning labs/chapters/11-sandbox.mjs network
@@ -300,7 +473,17 @@ flowchart TD
 
 Learn Pi Agent 第 15 章为 Pi 和 mox 写了一个沙箱扩展。两边的整体设计几乎一样：macOS 用 seatbelt，Linux 用 bubblewrap；用本地代理按域名放行；项目里“会在沙箱外被执行”的文件单独保护；只包 bash。差别在起点和接线方式。Pi 的 seatbelt 配置是这样开头的：
 
+::: tabs
+@@ Claude Code
+@oss sandbox-runtime src/sandbox/macos-sandbox-utils.ts#L1015-L1048 hl=1017,1023-1027,1033-1048
+`(deny default …)` 起头，只放行进程运行必需的东西，读、写、网络各自再加一段。
+@@ mox
 @mox extensions/sandbox/policy.ts#seatbeltProfile hl=52,53,57
+`(allow default)` 起头，再收紧写入、读取和网络。
+@@ coda
+@code runtime/sandbox.mjs#seatbeltProfile
+保留 Claude Code 的结构：默认拒绝，读先放开再禁止，写先放开再收紧，网络只留代理端口。
+:::
 
 它**默认允许**，再收紧写入、读取和网络；Claude Code 是**默认拒绝**，再逐项放行。
 
@@ -315,6 +498,32 @@ Learn Pi Agent 第 15 章为 Pi 和 mox 写了一个沙箱扩展。两边的整�
 | 沙箱起不来 | 缺省警告后继续；`failIfUnavailable` 才退出 | 通知“bash 命令将不受限制地运行”，继续 | `runSandboxed` 抛错；`createCoda` 缺省警告后不加沙箱运行，`sandboxRequired` 才抛错 |
 
 最重要的差别是第二行：Pi 里权限规则和沙箱策略是两份东西，各写各的；Claude Code 里是**同一份规则被翻译成两个执行点**，写一条 `Read(./.env)`，工具层和内核层同时生效。代价是适配层要维护翻译（路径的两套写法、通配符在 Linux 上不支持），而翻译里的任何一个疏漏，都是规则和沙箱对不上的缝。
+
+命令怎样被包进沙箱、代理怎样判断一个域名，这两处各有三种写法：
+
+::: tabs
+@@ Claude Code
+@cc utils/Shell.ts#L256-L273 hl=259-265,267-269
+`wrapWithSandbox` 收进去的是字符串，出来的还是字符串，再交给 shell 的 `-c`。
+@@ mox
+@mox extensions/sandbox/policy.ts#wrapCommand
+`sandbox-exec -f 配置文件 /bin/bash -c 命令`，或者 `bwrap 参数 -- /bin/bash -c 命令`，并覆盖代理环境变量。
+@@ coda
+@code runtime/sandbox.mjs#sandboxCommand
+把 command + args 包成 `sandbox-exec -p` 或 `bwrap … --` 的 argv；没有后端返回 `undefined`，由 `runSandboxed` 抛错。
+:::
+
+::: tabs
+@@ Claude Code
+@oss sandbox-runtime src/sandbox/sandbox-manager.ts#filterNetworkRequest hl=377,387,390-402,404-409,413-416
+主机名校验和规范化，先拒绝名单，再允许名单，最后问人。
+@@ mox
+@mox extensions/sandbox/proxy.ts#hostAllowed
+只有允许名单：`example.com` 精确匹配，`*.example.com` 匹配子域名；没有拒绝名单，也不做主机名校验。
+@@ coda
+@code runtime/sandbox.mjs#networkDecision
+Claude Code 的流程缩写：校验、规范化、拒绝、允许、问人。
+:::
 
 ## coda 里的实现
 

@@ -195,6 +195,65 @@ Skill 工具的 `call` 也分两路，inline 的那一路最后走到**同一个
 3. **目录变量**（第 362 行）：`${CLAUDE_SKILL_DIR}` 换成绝对路径，这样动态注入的命令能引用 Skill 自带的脚本（紧接着还有会话 id）。
 4. **动态注入**（第 374 行起）：正文里的 `` !`命令` `` 在本地执行，输出替换命令本身。MCP 来的 Skill 是远程不可信的，第 374 行直接跳过这一步。执行时传入的权限上下文里，`alwaysAllowRules.command` 被设成**这个 Skill 自己的 `allowed-tools`**（第 385–388 行）：Skill 声明的工具，同时授权了它自己正文里的命令。
 
+正文被改写的四步，用 `/release-notes v2.0` 走一遍：
+
+::: steps getPromptForCommand：正文被改写的四步
+--- 两扇门共用的 `getPromptForCommand` 是 `createSkillCommand` 里的闭包，捕获了发现阶段读进内存的正文（`loadSkillsDir.ts` 第 344–399 行）。以 `/release-notes v2.0` 为例，正文里有 `${CLAUDE_SKILL_DIR}`、`$ARGUMENTS` 和两处 `` !`命令` ``。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::on
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::dim
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::dim
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::dim
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::dim
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::dim
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+--- **① 基准目录**（第 346 行）：目录形式的 Skill 在正文前加一行 “Base directory for this skill: …”，模型才知道相对路径从哪里算起。旧式的 `commands/*.md` 没有这一行。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::done
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::on
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::dim
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::dim
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::dim
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::dim
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+--- **② 参数替换**（第 349–354 行，`substituteArguments`）：依次做具名参数、`$ARGUMENTS[n]`、`$n`（从 0 开始）、整串 `$ARGUMENTS`。正文里一个占位符也没有而参数不为空，就把 `ARGUMENTS: …` 附在最后。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::done
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::done
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::on
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::dim
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::dim
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::dim
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+--- **③ 目录变量**（第 362 行）：`${CLAUDE_SKILL_DIR}` 换成绝对路径，这样下一步的命令可以引用 Skill 自带的脚本。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::done
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::done
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::done
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::on
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::dim
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::dim
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+--- **④ 动态注入**（第 374 行起）：行首或空白之后的 `` !`命令` `` 在本地执行（`promptShellExecution.ts` 第 90 行的正则；全角冒号后面的不会执行）。每条命令先过 Bash 工具同一个权限函数（第 98–104 行），不是 allow 就抛错，整个调用失败。权限上下文里 `alwaysAllowRules.command` 是 Skill 自己的 `allowed-tools`（第 385–388 行）。MCP 来的 Skill 跳过这一步。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::done
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::done
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::done
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::done
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::on
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::dim
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+--- 渲染完成。`processPromptSlashCommand` 产出三样东西（`processSlashCommand.tsx` 第 902–912 行）：带标签的用户消息、隐藏的 `isMeta` 正文消息，和一条 `command_permissions` 附件；`addInvokedSkill`（第 885 行）另存一份，压缩之后靠它找回。
+flowchart TD
+  O["正文原文<br/>发现阶段读进来，捕获在闭包里"]:::done
+  B1["① 基准目录<br/>加一行 Base directory for this skill"]:::done
+  B2["② 参数替换<br/>$ARGUMENTS 换成 v2.0"]:::done
+  B3["③ 目录变量<br/>CLAUDE_SKILL_DIR 换成绝对路径"]:::done
+  B4["④ 动态注入<br/>命令先过权限，再执行，输出替换命令"]:::done
+  OUT["渲染好的正文<br/>isMeta 用户消息，发给模型"]:::on
+  O --> B1 --> B2 --> B3 --> B4 --> OUT
+:::
+
 参数替换：
 
 @cc utils/argumentSubstitution.ts#L100-L145 hl=111-121,130-133,136,140-142
@@ -241,9 +300,79 @@ Skill 工具的 `call` 也分两路，inline 的那一路最后走到**同一个
 
 deny 规则优先（摘录之前的第 469–486 行）；然后是 allow 规则（`Skill(名字)` 精确匹配，`Skill(前缀:*)` 前缀匹配）；然后是第 529 行起的一条捷径——“只有安全字段的 Skill”直接放行；都不满足，才问用户，并给出两条建议规则：名字本身和 `名字:*`（第 540–567 行）。录制的 PermissionRequest 钩子数据里，`permission_suggestions` 正是这两条。“安全字段”的判定：
 
-@cc tools/SkillTool/SkillTool.ts#skillHasOnlySafeProperties hl=912,917-929,930
+@cc tools/SkillTool/SkillTool.ts#L910-L933 hl=912,917-929,930
 
 这是一份**白名单**，不是黑名单。Command 上的每个属性，在名单里就放过；不在名单里，只要有“有意义的值”（不是 `undefined`、空数组、空对象）就要问。源码注释写明了动机：以后给 `PromptCommand` 加了新属性，默认就是要批准的，审查过再放进名单。和第 3 章 `isConcurrencySafe` 缺省 `false` 是同一种 fail-closed 的写法。
+
+把“授权”这一站放进时间线，看批准、展开、授权依次发生在哪里：
+
+::: steps 模型调用带 allowed-tools 的 Skill
+--- 模型调用 Skill 工具。`validateInput` 先把关：名字非空，去掉开头斜杠，`findCommand` 找不到是 “Unknown skill”，`disableModelInvocation` 为真或不是 `prompt` 类型都拒绝。它排在权限之前。
+sequenceDiagram
+  participant M as 模型
+  participant T as Skill 工具
+  participant U as 用户 / 权限
+  participant R as 展开函数
+  participant Q as 查询循环
+  M->>T: tool_use：Skill(release-notes)
+  Note over T: validateInput：findCommand、disableModelInvocation、prompt 类型
+--- `checkPermissions` 依次是：deny 规则；allow 规则（`Skill(名字)` 精确、`Skill(前缀:*)` 前缀）；只有安全字段的 Skill 直接放行（`SkillTool.ts` 第 506–538 行）。带 `allowed-tools` 的 Skill 不在白名单里，只能询问，并给出两条建议规则。
+sequenceDiagram
+  participant M as 模型
+  participant T as Skill 工具
+  participant U as 用户 / 权限
+  participant R as 展开函数
+  participant Q as 查询循环
+  M->>T: tool_use：Skill(release-notes)
+  Note over T: validateInput：findCommand、disableModelInvocation、prompt 类型
+  T->>U: checkPermissions：deny 规则、allow 规则、安全字段捷径都不满足
+  U-->>T: 询问，建议 Skill(release-notes) 和 Skill(release-notes:*)
+--- 用户批准（或已有 `Skill(release-notes)` 规则）。`call` 走到 inline 分支，交给 `processPromptSlashCommand`，它的外壳就是用户那一扇门共用的展开函数（第 635–647 行）。参数是 `args || ''`。
+sequenceDiagram
+  participant M as 模型
+  participant T as Skill 工具
+  participant U as 用户 / 权限
+  participant R as 展开函数
+  participant Q as 查询循环
+  M->>T: tool_use：Skill(release-notes)
+  Note over T: validateInput：findCommand、disableModelInvocation、prompt 类型
+  T->>U: checkPermissions：deny 规则、allow 规则、安全字段捷径都不满足
+  U-->>T: 询问，建议 Skill(release-notes) 和 Skill(release-notes:*)
+  U-->>T: 用户批准（-p 模式没人可问，调用失败）
+  T->>R: processPromptSlashCommand → getPromptForCommand
+--- 展开函数渲染正文，产出三样东西并记下 `addInvokedSkill`（`processSlashCommand.tsx` 第 869–912 行）。模型收到的 `tool_result` 只是一句 `Launching skill: release-notes`，正文走的是另一条隐藏的 meta 用户消息。
+sequenceDiagram
+  participant M as 模型
+  participant T as Skill 工具
+  participant U as 用户 / 权限
+  participant R as 展开函数
+  participant Q as 查询循环
+  M->>T: tool_use：Skill(release-notes)
+  Note over T: validateInput：findCommand、disableModelInvocation、prompt 类型
+  T->>U: checkPermissions：deny 规则、allow 规则、安全字段捷径都不满足
+  U-->>T: 询问，建议 Skill(release-notes) 和 Skill(release-notes:*)
+  U-->>T: 用户批准（-p 模式没人可问，调用失败）
+  T->>R: processPromptSlashCommand → getPromptForCommand
+  R-->>T: 标签用户消息 + isMeta 正文 + command_permissions
+  T-->>M: tool_result：Launching skill: release-notes
+--- 最后 `call` 返回 `contextModifier`：`allowedTools` 并进 `alwaysAllowRules.command`，这个规则来源和 settings、命令行并列（`SkillTool.ts` 第 775–821 行）。工具池没变，只是列出的这些在这一轮里不再询问。**先由用户批准 Skill，Skill 再替用户批准一小组工具。**
+sequenceDiagram
+  participant M as 模型
+  participant T as Skill 工具
+  participant U as 用户 / 权限
+  participant R as 展开函数
+  participant Q as 查询循环
+  M->>T: tool_use：Skill(release-notes)
+  Note over T: validateInput：findCommand、disableModelInvocation、prompt 类型
+  T->>U: checkPermissions：deny 规则、allow 规则、安全字段捷径都不满足
+  U-->>T: 询问，建议 Skill(release-notes) 和 Skill(release-notes:*)
+  U-->>T: 用户批准（-p 模式没人可问，调用失败）
+  T->>R: processPromptSlashCommand → getPromptForCommand
+  R-->>T: 标签用户消息 + isMeta 正文 + command_permissions
+  T-->>M: tool_result：Launching skill: release-notes
+  T->>Q: contextModifier：allowedTools 并进 alwaysAllowRules.command
+  Note over Q: 这一轮里 Bash(cat *) 不再询问，回答结束后授权失效
+:::
 
 下面的实验先拿原版的 `skillHasOnlySafeProperties`（连同运行时读出来的 `SAFE_SKILL_PROPERTIES` 名单，命令对象由原版的 `createSkillCommand` 创建）逐个字段问，再把录制的三种设置和 coda 对照，最后看批准之后授权的范围和寿命。
 
@@ -303,11 +432,31 @@ deny 规则优先（摘录之前的第 469–486 行）；然后是 allow 规则
 
 两处值得对着代码看。参数替换，Pi 用一个正则、一次 `replace` 吃掉所有写法，注释写明参数里的占位符不会递归替换：
 
+::: tabs
+@@ Claude Code
+@cc utils/argumentSubstitution.ts#L100-L145 hl=111-121,130-133,136,140-142
+分四遍依次替换，`$n` 从 0 开始；前一遍插进去的内容会被后一遍再扫。
+@@ Pi
 @pi packages/coding-agent/src/core/prompt-templates.ts#L63-L81 hl=73-74,79
+一遍替换，`$1` 从 1 开始，参数里的占位符不会递归替换。
+@@ coda
+@code coda/src/skills.mjs#substitute hl=208-213,216
+顺序和 Claude Code 相同，只有 `$ARGUMENTS` 用函数形式，保留参数里的 `$$`。
+:::
 
 目录，mox 的是系统提示里的一段文字，一条带一个文件位置，因为模型要用 `read` 去读它；没有预算，不分档，也不是增量：
 
+::: tabs
+@@ Claude Code
+@cc tools/SkillTool/prompt.ts#L74-L121 hl=76,88-90,110,117-121
+对话里的附件，有预算，三档降级。
+@@ mox
 @mox mox/src/skills.ts#formatSkillsIndex
+系统提示里的一段文字，每条带文件位置，模型用 `read` 去读。
+@@ coda
+@code coda/src/skills.mjs#formatListing hl=184,186-189
+三档降级的紧凑版，输出与原版逐字一致。
+:::
 
 两种设计的分歧在于 Skill 是不是“只是一个文件”。Pi 的答案是：是，模型用读文件的工具去读，不需要任何新机制，行为一目了然。Claude Code 的答案是：不是，它是一个会被渲染、会带权限、会改变这一轮运行条件的**命令**。每多一项机制都解决一个真问题，代价是 Skill 不再等于文件：本章录制里，模型读原文件得到的东西和 Skill 工具给它的不一样。
 
@@ -345,7 +494,7 @@ Pi 那一章说过：装一个第三方 Skill，等于让陌生人给你的 Agen
 
 **谁需要批准。** `needsApproval` 的白名单写法，新增字段默认要问：
 
-@code coda/src/skills.mjs#needsApproval hl=254-257,261
+@code coda/src/skills.mjs#L258-L262 hl=258,261
 
 简化的几处：工具结果只有一个 `text` 通道，所以 coda 把渲染后的正文直接作为工具结果，原版是 `tool_result` 里一句话加另一条 meta 消息；授权记在 `Skills` 实例上，由宿主调 `resetGrants()` 结束寿命；没有 hooks、`model`、`effort`、`paths` 的处理，也没有用户目录和插件来源。
 

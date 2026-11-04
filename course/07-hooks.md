@@ -69,6 +69,113 @@ flowchart TD
 
 27 个事件，Pi 扩展实现了其中 6 个。按位置分四组：会话级（`SessionStart`、`SessionEnd`、`InstructionsLoaded`、`CwdChanged`、`FileChanged`……）；一次输入级（`UserPromptSubmit`、`Stop`、`StopFailure`）；工具级（`PreToolUse`、`PostToolUse`、`PostToolUseFailure`、`PermissionRequest`、`PermissionDenied`）；其余跟着功能走（压缩前后的 `PreCompact`、`PostCompact`，子 Agent 的 `SubagentStart`、`SubagentStop`，`Notification`，MCP 的 `Elicitation`……）。上面那次录制触发了其中八种。
 
+下面把一次 PreToolUse 从头走到尾：模型要运行 `rm -rf build`，看这条调用怎样变成一个决定。每一步的细节在后面各节展开。
+
+::: steps 一次 PreToolUse：从事件到决定
+--- 模型发出 `Bash(rm -rf build)`，通过 zod 校验和 `validateInput` 后，流水线在权限判断之前触发 **PreToolUse**。这个事件的匹配字段是 `tool_name`（`utils/hooks.ts` 第 1615–1633 行的 `switch`）。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::on
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::dim
+  H1["block-dangerous.sh"]:::dim
+  H2["dry-run-deploy.mjs"]:::dim
+  H3["protect-env.mjs<br/>matcher: Read|Edit|Write"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::dim
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::dim
+  TE["toolHooks + toolExecution<br/>采纳 Hook 的决定"]:::dim
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+--- `getMatchingHooks` 按 matcher 选 Hook：`Bash` 走精确匹配，选中 `block-dangerous.sh` 和 `dry-run-deploy.mjs`；`protect-env.mjs` 的 matcher 是 `Read|Edit|Write`，对不上 `Bash`，根本不会启动。各来源的配置先合并，同一条命令只留一个（第 1744–1754 行）。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::done
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::on
+  H1["block-dangerous.sh"]:::on
+  H2["dry-run-deploy.mjs"]:::on
+  H3["protect-env.mjs<br/>不匹配，不启动"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::dim
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::dim
+  TE["toolHooks + toolExecution<br/>采纳 Hook 的决定"]:::dim
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+--- 选中的两个 Hook **同时**作为子进程启动：`spawn(命令文本, [], { shell: true })`（第 973–984 行），事件 JSON 写进 stdin，每个 Hook 有自己的超时（第 2194–2198 行，缺省 10 分钟）。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::done
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::done
+  H1["block-dangerous.sh<br/>子进程运行中"]:::on
+  H2["dry-run-deploy.mjs<br/>子进程运行中"]:::on
+  H3["protect-env.mjs<br/>不匹配，不启动"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::dim
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::dim
+  TE["toolHooks + toolExecution<br/>采纳 Hook 的决定"]:::dim
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+--- 子进程结束，`executeHooks` 读各自的回答。`dry-run-deploy.mjs` 对这条命令没有意见：退出码 0、没有输出，是 `success`。`block-dangerous.sh` 没有输出 JSON，所以轮到退出码：**2** 变成 `blockingError`，理由是 `[命令文本]: stderr`（第 2660–2663 行）。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::done
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::done
+  H1["block-dangerous.sh<br/>退出码 2 + stderr"]:::on
+  H2["dry-run-deploy.mjs<br/>退出码 0，无输出"]:::on
+  H3["protect-env.mjs<br/>不匹配，不启动"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::on
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::dim
+  TE["toolHooks + toolExecution<br/>采纳 Hook 的决定"]:::dim
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+--- `for await (const result of all(hookPromises))` 按**完成顺序**逐个消费（第 2743–2761 行）：`blockingError` 原样放出去。如果有 Hook 在 JSON 里给了权限意见，才会进 deny、ask、allow 的折叠（第 2820–2868 行）。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::done
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::done
+  H1["block-dangerous.sh<br/>退出码 2 + stderr"]:::done
+  H2["dry-run-deploy.mjs<br/>退出码 0，无输出"]:::done
+  H3["protect-env.mjs<br/>不匹配，不启动"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::done
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::on
+  TE["toolHooks + toolExecution<br/>采纳 Hook 的决定"]:::dim
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+--- `runPreToolUseHooks` 把 `blockingError` 改写成 `behavior: 'deny'`，消息是 `PreToolUse:Bash hook error: …`（`toolHooks.ts` 第 481–498 行）；`toolExecution` 存下这个结果（第 831–844 行）。deny 就是 deny：`rm` 不会执行，模型收到的是一条报错的 `tool_result`。
+flowchart TD
+  EV["PreToolUse<br/>Bash: rm -rf build"]:::done
+  SEL["getMatchingHooks<br/>matcher + 去重"]:::done
+  H1["block-dangerous.sh<br/>退出码 2 + stderr"]:::done
+  H2["dry-run-deploy.mjs<br/>退出码 0，无输出"]:::done
+  H3["protect-env.mjs<br/>不匹配，不启动"]:::dim
+  RD["读回答<br/>JSON 优先，再看退出码"]:::done
+  MG["executeHooks 向外 yield<br/>blockingError / 权限意见"]:::done
+  TE["deny：rm 不执行<br/>tool_result 报错"]:::on
+  EV --> SEL
+  SEL --> H1
+  SEL --> H2
+  SEL -.-> H3
+  H1 --> RD
+  H2 --> RD
+  RD --> MG --> TE
+:::
+
 ## 一个事件发生时，哪些 Hook 会运行
 
 选 Hook 靠两样东西：事件名，和 matcher 对**这个事件的匹配字段**的判断。
@@ -245,6 +352,79 @@ PreToolUse 的补充信息出现在第 17 个请求里，开头是 `PreToolUse:B
 
 第一行是认真的 Hook：第一次想结束被拦下，看到 `stop_hook_active` 为真就放行。第二行是永远说“还不行”的 Hook，即使 `maxTurns` 设成 3，它也被问了 5 次，一直到脚本化模型的回复用完才以 `model_error` 收场；换成真实的模型，就是烧到额度用完。`continue: false` 直接终止。Hook 自己崩了（最后一行）按放行处理，运行照常完成。
 
+把 Hook 一侧和循环一侧合起来，一次“被拦下、再来一圈、放行”的完整往返是这样的（Hook 用的是录制里的 `require-tests.mjs`）：
+
+::: steps Stop Hook 把循环多推一圈
+--- 模型回复了“都处理好了”，没有 `tool_use`，`queryLoop` 走到结束的位置。上一轮没有出 API 错误，所以调用 `handleStopHooks`，此时 `stopHookActive` 还是 `undefined`（`query.ts` 第 1267–1276 行）。
+sequenceDiagram
+  participant M as 模型
+  participant L as queryLoop
+  participant S as handleStopHooks
+  participant H as require-tests.mjs
+  M->>L: 回复“都处理好了”，没有 tool_use
+  L->>S: handleStopHooks(…, stopHookActive = undefined)
+--- `executeStopHooks` 组装输入（`hooks.ts` 第 3660–3685 行）：`last_assistant_message` 取自最后一条助手消息的文字，`stop_hook_active` 是循环传进来的标志。Hook 作为子进程运行，输入从 stdin 进去。
+sequenceDiagram
+  participant M as 模型
+  participant L as queryLoop
+  participant S as handleStopHooks
+  participant H as require-tests.mjs
+  M->>L: 回复“都处理好了”，没有 tool_use
+  L->>S: handleStopHooks(…, stopHookActive = undefined)
+  S->>H: stdin：last_assistant_message，stop_hook_active = false
+--- 回复里没有“测试通过”，Hook 输出 `decision: block` 加理由。JSON 优先于退出码，`handleStopHooks` 把它变成一条 `isMeta` 的用户消息 `Stop hook feedback: …`，放进 `blockingErrors`（`stopHooks.ts` 第 257–263 行）。
+sequenceDiagram
+  participant M as 模型
+  participant L as queryLoop
+  participant S as handleStopHooks
+  participant H as require-tests.mjs
+  M->>L: 回复“都处理好了”，没有 tool_use
+  L->>S: handleStopHooks(…, stopHookActive = undefined)
+  S->>H: stdin：last_assistant_message，stop_hook_active = false
+  H-->>S: decision: block，reason：请先运行 npm test
+  S-->>L: blockingErrors = [Stop hook feedback: …]
+--- `blockingErrors` 不为空，循环把它接在对话后面，带着 `stopHookActive: true` 和 `transition: stop_hook_blocking` 再请求一次（`query.ts` 第 1285–1302 行）。注意这一圈不增加 `turnCount`。
+sequenceDiagram
+  participant M as 模型
+  participant L as queryLoop
+  participant S as handleStopHooks
+  participant H as require-tests.mjs
+  M->>L: 回复“都处理好了”，没有 tool_use
+  L->>S: handleStopHooks(…, stopHookActive = undefined)
+  S->>H: stdin：last_assistant_message，stop_hook_active = false
+  H-->>S: decision: block，reason：请先运行 npm test
+  S-->>L: blockingErrors = [Stop hook feedback: …]
+  L->>M: 带着反馈再请求，stopHookActive = true
+--- 模型运行 `npm test`，再回复“测试通过”。这一次 Hook 收到 `stop_hook_active = true`，并且回复里有“测试通过”，什么也不输出、退出码 0。`blockingErrors` 为空，循环才真正结束。
+sequenceDiagram
+  participant M as 模型
+  participant L as queryLoop
+  participant S as handleStopHooks
+  participant H as require-tests.mjs
+  M->>L: 回复“都处理好了”，没有 tool_use
+  L->>S: handleStopHooks(…, stopHookActive = undefined)
+  S->>H: stdin：last_assistant_message，stop_hook_active = false
+  H-->>S: decision: block，reason：请先运行 npm test
+  S-->>L: blockingErrors = [Stop hook feedback: …]
+  L->>M: 带着反馈再请求，stopHookActive = true
+  M->>L: 运行 npm test，回复“测试通过”
+  L->>S: handleStopHooks(…, stopHookActive = true)
+  S->>H: stdin：stop_hook_active = true
+  H-->>S: 无输出，退出码 0
+  S-->>L: blockingErrors 为空，循环结束
+:::
+
+循环一侧的写法，Claude Code 和 coda 并排看：
+
+::: tabs
+@@ Claude Code
+@cc query.ts#L1267-L1304 hl=1267,1278-1279,1282,1300,1302
+`stop_hook_prevented` 直接退出；`blockingErrors` 非空就带着 `stopHookActive: true` 再来一圈，`turnCount` 原样带过去。
+@@ coda
+@code coda/src/engine.mjs#L163-L181 hl=163,169,172,176,178,179
+结构相同：`prevent` 退出，`block` 变成一条 meta 用户消息，`turnCount` 不变，`stopHookActive: true`。
+:::
+
 所以写 Stop Hook 有三条规矩：先检查 `stop_hook_active`；判断依据用真实状态（读 `transcript_path` 看测试有没有跑，或者查测试结果文件），不要相信模型自己写的“测试通过”；理由写具体，它会作为一条用户消息出现在模型面前。
 
 ## Hook 自己出错时
@@ -306,7 +486,16 @@ Pi 扩展按文档实现了同一套协议，同一份脚本在 Pi、mox、Claud
 
 Pi 版本的 `onFailure` 是 Claude Code 没有的配置项，它存在的原因正是前面那个取舍：
 
+::: tabs
+@@ Claude Code
+@cc utils/hooks.ts#L2647-L2696 hl=2648,2660-2663,2670-2671,2688
+只有退出码 2 生成 `blockingError`；其他非零退出码一律是 `non_blocking_error`，没有配置项。
+@@ mox
 @mox extensions/hooks/protocol.ts#L94-L96 hl=94
+@@ coda
+@code coda/src/hooks.mjs#readHookOutput hl=81,82,86
+照 Claude Code 写：退出码 2 才是 blocking，其余非零是 non_blocking_error。
+:::
 
 `blocked` 的第二个条件让配置了 `onFailure: "block"` 的 Hook 在任何非零退出码时都按拦下处理。需要“出错就拒绝”的安全 Hook，在 Pi 里是一个配置项；在 Claude Code 里，只能写进脚本自己的错误处理。
 

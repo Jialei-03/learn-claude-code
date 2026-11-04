@@ -42,6 +42,81 @@ build: createCoda 总装：1～12 章的模块按 Claude Code 的方式接在一
 
 @trace node --disable-warning=ExperimentalWarning labs/ch13/trace.mjs
 
+把这十一步压成七帧，看每道关在哪一步出场：
+
+::: steps 修复一个失败的测试：每道关在哪一步出场
+--- **批准 Skill。** 模型先调用 `verify` Skill。它带着 `allowed-tools`，所以调用本身要用户批准（权限一列是 `ask/skill`）；批准之后，`Test` 在这一次运行里被授权（第 9 章）。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::on
+  N2["② Agent 定位文件 · ③ Test 失败"]:::dim
+  N3["④ Edit 实现：没读过，校验拦下"]:::dim
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::dim
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::dim
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::dim
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **定位，再跑测试。** 子 Agent 去找实现文件，只交回最后一段话（第 10 章）；第 3 步的 `Test` 不再询问（`allow/rule`），测试失败：`'a--b' !== 'a-b'`，触发 PostToolUseFailure。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::on
+  N3["④ Edit 实现：没读过，校验拦下"]:::dim
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::dim
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::dim
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::dim
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **没读过就改。** 模型想直接 Edit `src/slug.cjs`。子 Agent 读过的不算，校验这一关就拦下：“file has not been read yet”，权限和 Hook 两列都是空的（第 3、10 章）。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::done
+  N3["④ Edit 实现：没读过，校验拦下"]:::on
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::dim
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::dim
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::dim
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **读完，又想改测试。** 两个 Read 之后，模型想改测试来“通过”。校验过了，PreToolUse Hook（一个真实的子进程）以退出码 2 拦下，理由是写给模型看的（第 7 章）。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::done
+  N3["④ Edit 实现：没读过，校验拦下"]:::done
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::on
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::dim
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::dim
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **改实现。** 默认模式下 Edit 要问用户（`ask/default`）；改完 PostToolUse Hook 把一句提醒补在结果后面（第 6、7 章）。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::done
+  N3["④ Edit 实现：没读过，校验拦下"]:::done
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::done
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::on
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::dim
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **没跑测试就想收工。** 模型回复“已经修好了”，Stop Hook 发现“改过之后没有通过的测试”，把运行推回循环，这是第 1 章的 `stop_hook_blocking`。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::done
+  N3["④ Edit 实现：没读过，校验拦下"]:::done
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::done
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::done
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::on
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::dim
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+--- **验收，收尾。** 模型再跑 `Test`，通过；第 10 步调用本地 MCP，第 11 步收尾。一个脚本化的模型加上全部真实的机制，修好了一个真正失败的测试。
+flowchart TD
+  N1["① Skill(verify)：调用要批准"]:::done
+  N2["② Agent 定位文件 · ③ Test 失败"]:::done
+  N3["④ Edit 实现：没读过，校验拦下"]:::done
+  N4["⑤ Read × 2 · ⑥ Edit 测试：PreToolUse Hook 拦下"]:::done
+  N5["⑦ Edit 实现：问用户，PostToolUse 补提醒"]:::done
+  N6["⑧ 说“已经修好了”：Stop Hook 推回"]:::done
+  N7["⑨ Test 通过 · ⑩ MCP · ⑪ 收尾"]:::on
+  N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7
+:::
+
 ## 沿着 main.tsx 读装配：参数怎样变成工具、权限和连接
 
 交互界面和 `claude -p` 共用同一套启动代码，这里沿无界面（headless）这条路读，它最短，也最容易看清“有哪些东西被装在一起”。
@@ -156,7 +231,109 @@ flowchart TD
 
 coda 的 `createCoda` 对应上面三层：构造期做 `main.tsx` 的事（规则、工具池、MCP、Skill、Agent），`run()` 做 `submitMessage` 的事（SessionStart、斜杠命令、UserPromptSubmit、Skill 目录、先落盘），然后交给第 1 章的 `Engine`。下面的时序图是一次 `run()`：
 
-```mermaid
+::: steps createCoda.run：一次提问的装配顺序
+--- **入口（对应 `submitMessage` 的前半段）。** `run()` 先 `start()`：连接 MCP、重新装配工具池；然后依次触发 SessionStart 和 UserPromptSubmit，后者可以拦下提示，被拦下的提示既不发给模型，也不写进会话文件。
+sequenceDiagram
+  participant H as 调用者（cli.mjs）
+  participant A as createCoda.run
+  participant K as Hooks
+  participant C as Conversation
+  participant S as 会话文件
+  participant E as Engine
+  participant T as Toolset
+  H->>A: run(text, signal)
+  A->>A: start()：连接 MCP，重新装配工具池
+  A->>K: SessionStart（startup 或 resume）
+  A->>K: UserPromptSubmit（可拦下）
+--- **交给 Engine。** 历史装进 `Conversation`，Skill 目录作为 meta 消息；然后把提问和历史交给第 1 章的 `Engine`。
+sequenceDiagram
+  participant H as 调用者（cli.mjs）
+  participant A as createCoda.run
+  participant K as Hooks
+  participant C as Conversation
+  participant S as 会话文件
+  participant E as Engine
+  participant T as Toolset
+  H->>A: run(text, signal)
+  A->>A: start()：连接 MCP，重新装配工具池
+  A->>K: SessionStart（startup 或 resume）
+  A->>K: UserPromptSubmit（可拦下）
+  A->>C: reset(history)，Skill 目录作为 meta 消息
+  A->>E: engine.run(question, history)
+--- **每一圈的请求前。** `request()` 里先 `flush`：把 Engine 消息列表里还没写过的部分追加进会话文件（对应 `QueryEngine` 的先落盘）；再 `compactIfDue`，到线才摘要，压缩结果作为新的根写回；最后组装请求，CLAUDE.md 在第一条消息里。
+sequenceDiagram
+  participant H as 调用者（cli.mjs）
+  participant A as createCoda.run
+  participant K as Hooks
+  participant C as Conversation
+  participant S as 会话文件
+  participant E as Engine
+  participant T as Toolset
+  H->>A: run(text, signal)
+  A->>A: start()：连接 MCP，重新装配工具池
+  A->>K: SessionStart（startup 或 resume）
+  A->>K: UserPromptSubmit（可拦下）
+  A->>C: reset(history)，Skill 目录作为 meta 消息
+  A->>E: engine.run(question, history)
+  loop 每一圈
+    E->>A: request(messages)
+    A->>C: flush：没写过的消息追加进文件
+    C->>S: append
+    A->>A: compactIfDue：到线就摘要，写回新的根
+    A->>E: wire（userContext 在第一条消息）
+  end
+--- **有工具调用。** `Toolset` 并行或分批执行：PreToolUse Hook 的意见按 `call.id` 留给闸门，然后依次校验、闸门、执行、PostToolUse。每道关失败都变成一条带原 id 的结果，没有一道关让循环抛异常。
+sequenceDiagram
+  participant H as 调用者（cli.mjs）
+  participant A as createCoda.run
+  participant K as Hooks
+  participant C as Conversation
+  participant S as 会话文件
+  participant E as Engine
+  participant T as Toolset
+  H->>A: run(text, signal)
+  A->>A: start()：连接 MCP，重新装配工具池
+  A->>K: SessionStart（startup 或 resume）
+  A->>K: UserPromptSubmit（可拦下）
+  A->>C: reset(history)，Skill 目录作为 meta 消息
+  A->>E: engine.run(question, history)
+  loop 每一圈
+    E->>A: request(messages)
+    A->>C: flush：没写过的消息追加进文件
+    C->>S: append
+    A->>A: compactIfDue：到线就摘要，写回新的根
+    A->>E: wire（userContext 在第一条消息）
+    E->>T: runCalls
+    T->>K: PreToolUse（意见按 call.id 留给闸门）
+    T->>T: 校验 → 闸门 → execute → PostToolUse
+  end
+--- **没有工具调用。** 模型说完了，Engine 去问 Stop Hook（`onStop`）：被拦下就带着理由再来一圈，放行才结束。
+sequenceDiagram
+  participant H as 调用者（cli.mjs）
+  participant A as createCoda.run
+  participant K as Hooks
+  participant C as Conversation
+  participant S as 会话文件
+  participant E as Engine
+  participant T as Toolset
+  H->>A: run(text, signal)
+  A->>A: start()：连接 MCP，重新装配工具池
+  A->>K: SessionStart（startup 或 resume）
+  A->>K: UserPromptSubmit（可拦下）
+  A->>C: reset(history)，Skill 目录作为 meta 消息
+  A->>E: engine.run(question, history)
+  loop 每一圈
+    E->>A: request(messages)
+    A->>C: flush：没写过的消息追加进文件
+    C->>S: append
+    A->>A: compactIfDue：到线就摘要，写回新的根
+    A->>E: wire（userContext 在第一条消息）
+    E->>T: runCalls
+    T->>K: PreToolUse（意见按 call.id 留给闸门）
+    T->>T: 校验 → 闸门 → execute → PostToolUse
+    E->>K: 没有工具调用时 Stop Hook
+  end
+--- **收尾。** Engine 返回终态，`finish` 做最后一次 `flush`，调用者拿到 frames 和 terminal，`cli.mjs` 据此给退出码。
 sequenceDiagram
   participant H as 调用者（cli.mjs）
   participant A as createCoda.run
@@ -185,13 +362,20 @@ sequenceDiagram
   E-->>A: terminal
   A->>C: finish：最后一次 flush
   A-->>H: frames 与 terminal
-```
+:::
 
 ### 箭头一：Hook 的意见，不能越过规则
 
 Toolset 的闸门收到的只有 `(call, tool, signal)`，看不到 PreToolUse Hook 的 allow / ask 意见。`createCoda` 的做法是让 Hook 一侧把意见按 `call.id` 记下来，闸门再取：
 
+::: tabs
+@@ coda
 @code coda/src/app.mjs#L62-L89 hl=69-74,83-84
+Hook 一侧把意见按 `call.id` 记下来，闸门再取，并成一条“整个工具”的 allow 或 ask 规则。
+@@ Claude Code
+@cc services/tools/toolHooks.ts#resolveHookPermissionDecision hl=347,372-378,386-391
+Hook 的 allow 只跳过询问：先 `checkRuleBasedPermissions`，没有规则意见才采纳；deny 规则照样拒绝，ask 规则照样弹窗。
+:::
 
 Hook 说 allow，就相当于多一条“整个工具 allow”的规则；Hook 说 ask，相当于多一条“整个工具 ask”的规则。借用第 6 章的 `decide` 的顺序，deny 规则、ask 规则和受保护路径本来就排在 allow 前面，所以 Hook 的 allow 自然只能省掉询问，推翻不了它们。这比单独写一套“Hook 意见”的判断要少一个出错的地方。Hook 说 deny 的情况，`Hooks.before` 已经在上游拦下，走不到闸门。
 
@@ -322,6 +506,23 @@ mox 的装配全在 `main()` 里，顺着读下来就是一份清单：
 `AgentSession` 拿到 Agent、会话管理器、设置、`resourceLoader`（技能、扩展、提示模板都从这里加载），以及一个 `extensionRunnerRef`（第 470 行）：运行时所有扩展事件都经过它。再往上一层，`Agent` 创建时的 `transformContext` 把“发给模型的消息”交给扩展改写。这里没有“权限上下文”，也没有“工具池”这样的核心概念：工具是会话的一个状态，权限是某个扩展挂在 `tool_call` 上的回调。
 
 对照 Claude Code 的三层：`main.tsx` 准备权限上下文、工具、MCP、命令和 Agent 定义；`QueryEngine` 每个提问组装一次 `ToolUseContext` 并先落盘；`query()` 每圈执行机制。每一层的产物都是下一层的输入，每个机制在哪一层出现是固定的。这就是 Claude Code 能写出 `assembleToolPool` 里那种“排序是为了缓存”的约定的前提：它知道工具池在哪里被消费。
+
+四种装配的入口，并排看它们把什么交给了谁：
+
+::: tabs
+@@ Claude Code
+@cc main.tsx#L2829-L2859 hl=2829,2835-2836,2843-2844,2858
+`main.tsx` 把权限、工具、命令、Agent 定义和 MCP 连接准备好，作为参数表交给 `runHeadless`。
+@@ Pi
+@pi packages/coding-agent/src/core/sdk.ts#L455-L472 hl=456-457,461,470
+`AgentSession` 拿到会话管理器、`resourceLoader` 和 `extensionRunnerRef`，机制由扩展事件接上。
+@@ mox
+@mox mox/src/cli.ts#L75-L90 hl=78,79-80,84,89,90
+`main()` 里顺着一份清单：工具、扩展宿主、`--ext`、MCP 内置扩展、`session_start`。
+@@ coda
+@code coda/src/app.mjs#L276-L331 hl=280,290,321,326,330
+`createCoda` 一个函数里接好闸门、工具池、Toolset 和 Conversation。
+:::
 
 ### mox 可以向 Claude Code 学什么
 

@@ -36,30 +36,146 @@ build: coda/src/request.mjs —— 提示优先级、上下文快照与两个槽
 
 system 分成 3 块（计费头 74 个字符，不缓存；身份声明 62 个字符和主体 5742 个字符，各有一个缓存标记）；20 个工具定义共 46988 个字符；还有 `thinking`、`output_config`、`context_management` 和 9 个 beta。这些东西各从哪里来，下面一项一项对上源码。整个组装过程如下：
 
-```mermaid
+::: steps 一个请求怎样一块块组装起来
+--- 每个回合开始，三份材料并行取回：默认提示 `getSystemPrompt`（静态段、动态边界、动态段），`getUserContext`（CLAUDE.md 和日期），`getSystemContext`（git 状态）。它们合起来就是“API 缓存键前缀”。
 flowchart TD
   subgraph 取材["每个回合开始：三份材料并行取回"]
-    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]
-    UC["getUserContext<br/>claudeMd、currentDate"]
-    SC["getSystemContext<br/>gitStatus"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::on
+    UC["getUserContext<br/>claudeMd、currentDate"]:::on
+    SC["getSystemContext<br/>gitStatus"]:::on
   end
-  SP --> EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]
-  EFF --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::dim --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::dim
   SC --> Q1
-  H["对话历史"] --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]
+  H["对话历史"]:::dim --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::dim
   UC --> Q2
-  T["工具列表"] --> TS["toolToAPISchema<br/>会话内只渲染一次"]
-  Q1 --> M["claude.ts：queryModel"]
+  T["工具列表"]:::dim --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::dim
+  Q1 --> M["claude.ts：queryModel"]:::dim
   Q2 --> M
   TS --> M
-  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]
-  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]
-  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]
-  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::dim
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::dim
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::dim
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::dim
   B --> P
   TS --> P
-  P --> API["anthropic.beta.messages.create<br/>流式请求"]
-```
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::dim
+--- `buildEffectiveSystemPrompt` 选底座：override > Agent > `--system-prompt` > 默认提示，只选一个，`append` 永远追加在最后。再由 `appendSystemContext` 把 git 状态拼成 `key: value`，作为 system 数组的**最后一项**。
+flowchart TD
+  subgraph 取材["每个回合开始：三份材料并行取回"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::done
+    UC["getUserContext<br/>claudeMd、currentDate"]:::dim
+    SC["getSystemContext<br/>gitStatus"]:::done
+  end
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::on --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::on
+  SC --> Q1
+  H["对话历史"]:::dim --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::dim
+  UC --> Q2
+  T["工具列表"]:::dim --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::dim
+  Q1 --> M["claude.ts：queryModel"]:::dim
+  Q2 --> M
+  TS --> M
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::dim
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::dim
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::dim
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::dim
+  B --> P
+  TS --> P
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::dim
+--- `prependUserContext` 把 userContext 做成一条 `isMeta` 的用户消息，包在 `<system-reminder>` 里，放在整个对话的**最前面**。CLAUDE.md 和日期走这条路。
+flowchart TD
+  subgraph 取材["每个回合开始：三份材料并行取回"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::done
+    UC["getUserContext<br/>claudeMd、currentDate"]:::done
+    SC["getSystemContext<br/>gitStatus"]:::done
+  end
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::done --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::done
+  SC --> Q1
+  H["对话历史"]:::on --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::on
+  UC --> Q2
+  T["工具列表"]:::dim --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::dim
+  Q1 --> M["claude.ts：queryModel"]:::dim
+  Q2 --> M
+  TS --> M
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::dim
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::dim
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::dim
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::dim
+  B --> P
+  TS --> P
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::dim
+--- 工具列表经 `toolToAPISchema` 渲染成 `{ name, description, input_schema }`，结果放进会话级的 Map：第一次渲染的字节被锁住，之后每个请求都从这里取，前缀不会因工具描述的变化而作废。
+flowchart TD
+  subgraph 取材["每个回合开始：三份材料并行取回"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::done
+    UC["getUserContext<br/>claudeMd、currentDate"]:::done
+    SC["getSystemContext<br/>gitStatus"]:::done
+  end
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::done --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::done
+  SC --> Q1
+  H["对话历史"]:::done --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::done
+  UC --> Q2
+  T["工具列表"]:::on --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::on
+  Q1 --> M["claude.ts：queryModel"]:::dim
+  Q2 --> M
+  TS --> M
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::dim
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::dim
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::dim
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::dim
+  B --> P
+  TS --> P
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::dim
+--- 进入 `queryModel`。消息一路：`normalizeMessagesForAPI` 合并整理，`ensureToolResultPairing` 修复配对，`addCacheBreakpoints` 只在最后一条消息上打一个断点。system 一路：加计费头和身份声明，`splitSysPromptPrefix` 切块，`buildSystemPromptBlocks` 写 `cache_control`。
+flowchart TD
+  subgraph 取材["每个回合开始：三份材料并行取回"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::done
+    UC["getUserContext<br/>claudeMd、currentDate"]:::done
+    SC["getSystemContext<br/>gitStatus"]:::done
+  end
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::done --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::done
+  SC --> Q1
+  H["对话历史"]:::done --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::done
+  UC --> Q2
+  T["工具列表"]:::done --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::done
+  Q1 --> M["claude.ts：queryModel"]:::on
+  Q2 --> M
+  TS --> M
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::on
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::on
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::on
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::dim
+  B --> P
+  TS --> P
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::dim
+--- `paramsFromContext` 把 model、`max_tokens`、`thinking`、betas 等字段和上面的 system、工具、消息合成请求体（它是个函数，重试时带着新上下文重算），交给 `anthropic.beta.messages.create` 流式发出。
+flowchart TD
+  subgraph 取材["每个回合开始：三份材料并行取回"]
+    SP["getSystemPrompt<br/>默认提示：静态段 + 边界 + 动态段"]:::done
+    UC["getUserContext<br/>claudeMd、currentDate"]:::done
+    SC["getSystemContext<br/>gitStatus"]:::done
+  end
+  SP --> EFF
+  EFF["buildEffectiveSystemPrompt<br/>override > agent > custom > default<br/>再追加 append"]:::done --> Q1["query.ts：appendSystemContext<br/>git 状态追加到 system 末尾"]:::done
+  SC --> Q1
+  H["对话历史"]:::done --> Q2["query.ts：prependUserContext<br/>CLAUDE.md 和日期成为第一条 user 消息"]:::done
+  UC --> Q2
+  T["工具列表"]:::done --> TS["toolToAPISchema<br/>会话内只渲染一次"]:::done
+  Q1 --> M["claude.ts：queryModel"]:::done
+  Q2 --> M
+  TS --> M
+  M --> N["normalizeMessagesForAPI<br/>ensureToolResultPairing"]:::done
+  M --> S["加计费头和身份声明<br/>splitSysPromptPrefix 切块<br/>buildSystemPromptBlocks 标缓存"]:::done
+  N --> B["addCacheBreakpoints<br/>最后一条消息打断点"]:::done
+  S --> P["paramsFromContext<br/>model、max_tokens、thinking、betas ……"]:::on
+  B --> P
+  TS --> P
+  P --> API["anthropic.beta.messages.create<br/>流式请求"]:::on
+:::
 
 读之前先记住缓存的规则（原理在 Learn Pi Agent 第 6 章）：请求按**工具 → system → 消息**的顺序展开，服务端从第一个字节开始和之前的请求比较，遇到第一个不同的地方就停，后面的全部按原价算。断点（`cache_control`）告诉服务端“到这里为止存一份”。所以越靠前的东西越不能动。
 
@@ -167,6 +283,29 @@ userContext 里的日期是会话开始那天的日期。过夜的会话跨过�
 @cc utils/attachments.ts#L1402-L1431 hl=1406-1411,1427-1431
 
 新日期以 `date_change` 附件的形式追加在对话末尾，`messages[0]` 里的旧日期留着不动，因为清缓存会让前缀重新生成，整个对话在下一个请求里变成写缓存。注释估算，一个过夜会话每跨一次午夜就要多付约 92 万个有效 token。函数本身很短：第一次调用只记下今天的日期（第 1421–1425 行）；日期没变返回空数组（1427）；变了就记下新日期，返回一条 `date_change`（1443）。模型收到的提醒大意是“日期已经变了，现在是某月某日，不要向用户提起这件事”（`messages.ts` 的 `date_change` 分支）。
+
+::: steps 日期跨过午夜：前缀不动，变化追加在末尾
+--- 会话开始：`getUserContext` 取一次快照，`messages[0]` 里写着 11-03。第一个请求里 `getDateChangeAttachments` 发现 `lastDate === null`，只记下今天，不发附件。整段前缀第一次写进缓存。
+flowchart TD
+  PRE["前缀：工具 + system + messages[0]<br/>currentDate = 11-03（会话开始时的快照）"]:::on --> Q1["23:50 请求 1<br/>getDateChangeAttachments：第一次，只记下日期，返回 []"]:::on --> Q2["23:58 请求 2<br/>日期没变，返回 []"]:::dim --> Q3["00:07 请求 3<br/>日期变了，记下 11-04"]:::dim --> Q4["00:09 请求 4<br/>日期没变，返回 []"]:::dim
+  Q3 --> DC["date_change 附件<br/>追加在对话末尾：现在是 11-04"]:::dim --> Q4
+--- 23:58 的第二个请求：`currentDate === lastDate`，返回空数组。前缀一个字节没动，实验里复用了 99%，新算的只有上一轮的工具结果和回复。
+flowchart TD
+  PRE["前缀：工具 + system + messages[0]<br/>currentDate = 11-03（会话开始时的快照）"]:::done --> Q1["23:50 请求 1<br/>getDateChangeAttachments：第一次，只记下日期，返回 []"]:::done --> Q2["23:58 请求 2<br/>日期没变，返回 []"]:::on --> Q3["00:07 请求 3<br/>日期变了，记下 11-04"]:::dim --> Q4["00:09 请求 4<br/>日期没变，返回 []"]:::dim
+  Q3 --> DC["date_change 附件<br/>追加在对话末尾：现在是 11-04"]:::dim --> Q4
+--- 00:07 的第三个请求：日期变了。它用 `setLastEmittedDate` 记下新日期，返回一条 `date_change`。注意它**没有**清 `getUserContext` 的缓存，`messages[0]` 里的旧日期留着不动。
+flowchart TD
+  PRE["前缀：工具 + system + messages[0]<br/>currentDate = 11-03（会话开始时的快照）"]:::done --> Q1["23:50 请求 1<br/>getDateChangeAttachments：第一次，只记下日期，返回 []"]:::done --> Q2["23:58 请求 2<br/>日期没变，返回 []"]:::done --> Q3["00:07 请求 3<br/>日期变了，记下 11-04"]:::on --> Q4["00:09 请求 4<br/>日期没变，返回 []"]:::dim
+  Q3 --> DC["date_change 附件<br/>追加在对话末尾：现在是 11-04"]:::dim --> Q4
+--- 新日期以附件的形式追加在对话末尾，模型读到的大意是“日期变了，现在是 11-04，不要向用户提起”。前缀没变，这个请求仍然复用 99%。如果改成清缓存重取，复用会掉到 12%，整段对话重算。
+flowchart TD
+  PRE["前缀：工具 + system + messages[0]<br/>currentDate = 11-03（会话开始时的快照）"]:::done --> Q1["23:50 请求 1<br/>getDateChangeAttachments：第一次，只记下日期，返回 []"]:::done --> Q2["23:58 请求 2<br/>日期没变，返回 []"]:::done --> Q3["00:07 请求 3<br/>日期变了，记下 11-04"]:::done --> Q4["00:09 请求 4<br/>日期没变，返回 []"]:::dim
+  Q3 --> DC["date_change 附件<br/>追加在对话末尾：现在是 11-04"]:::on --> Q4
+--- 00:09 的第四个请求：`lastDate` 已经是 11-04，回到返回空数组。提醒留在历史里，之后每个请求继续命中缓存。
+flowchart TD
+  PRE["前缀：工具 + system + messages[0]<br/>currentDate = 11-03（会话开始时的快照）"]:::done --> Q1["23:50 请求 1<br/>getDateChangeAttachments：第一次，只记下日期，返回 []"]:::done --> Q2["23:58 请求 2<br/>日期没变，返回 []"]:::done --> Q3["00:07 请求 3<br/>日期变了，记下 11-04"]:::done --> Q4["00:09 请求 4<br/>日期没变，返回 []"]:::on
+  Q3 --> DC["date_change 附件<br/>追加在对话末尾：现在是 11-04"]:::done --> Q4
+:::
 
 实验模拟 23:50、23:58、00:07、00:09 四个请求，比较两种做法。**A**：每个请求都重新取上下文，日期随之更新。**B**：用会话开始时的快照，日期变了就往历史里追加一条提醒。原函数用模拟的时钟驱动，coda 的 `dateChange` 做同样的判断；请求的尺寸参照录制（工具 46988 个字符，system 5878 个字符）：
 
@@ -321,11 +460,21 @@ system 和工具的指纹**先去掉 `cache_control`**，再单独给所有块�
 | 缓存断点 | system 两块（全局模式一块）加最后一条消息 | system 一块、最后一个工具、最后一条 user 或 system 消息 | system 的块加最后一块 |
 | 规则放哪 | 大量在工具描述里 | `<rules>` 由工具的 `promptGuidelines` 拼 | 工具的 `description` |
 
-Pi 对“会话中途变了”的回答是一份小节补丁：
+Pi 对“会话中途变了”的回答是一份小节补丁，Claude Code 的回答是附件和提醒：
 
+::: tabs
+@@ Claude Code
+@cc utils/attachments.ts#getDateChangeAttachments
+日期变了，往末尾追加一条 `date_change` 附件，`messages[0]` 里的旧日期不动。
+@@ Pi
 @pi packages/coding-agent/src/core/system-prompt.ts#diffSystemPromptSections
+系统提示分节，变了的节生成一份补丁，追加在对话末尾。
+@@ coda
+@code coda/src/request.mjs#dateChange
+和 Claude Code 同一个判断：只在日期变化的那个请求里发提醒。
+:::
 
-Claude Code 的回答是附件和提醒。两边的做法同构：**不改前面，在后面补**。
+两边的做法同构：**不改前面，在后面补**。
 
 几个取舍值得说清楚：
 

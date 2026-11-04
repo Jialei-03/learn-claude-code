@@ -78,29 +78,100 @@ Claude Code 以 npm 包 `@anthropic-ai/claude-code` 发布。包里的 `cli.js` 
 
 `main.tsx` 有四千六百多行，大部分是命令行参数的定义和各种初始化。我们只关心一个分岔：**有没有 `-p`（`--print`）**。
 
-```mermaid
+::: steps 一次请求怎样从 claude 命令走到 query()
+--- `claude` 先执行 `entrypoints/cli.tsx` 的 `main()`。它先看参数：只有一个 `--version`（或 `-v`、`-V`）时，直接打印构建时写死的 `MACRO.VERSION` 就返回，一个模块都不加载。
 flowchart TD
-  A["claude ...（cli.js）"] --> B["entrypoints/cli.tsx main()<br/>快速路径：--version 等"]
-  B -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]
-  C -->|"有 -p / --print<br/>或 SDK 调用"| D["cli/print.ts runHeadless()"]
-  C -->|交互模式| E["launchRepl() → screens/REPL.tsx"]
-  D --> F["QueryEngine.ts ask()<br/>→ QueryEngine.submitMessage()"]
-  F --> G["processUserInput()<br/>斜杠命令、附件"]
-  E --> H["utils/handlePromptSubmit.ts<br/>→ processUserInput()"]
-  H --> I["REPL.onQuery → onQueryImpl"]
-  G --> Q["query.ts query()<br/>主循环（第 1 章）"]
-  I --> Q
-  Q --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]
-  Q --> T["services/tools/<br/>执行工具（第 3 章）"]
-```
+  A["claude ...（cli.js）"]:::on --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on -->|"只有 --version"| V["--version：打印版本号后返回"]:::on
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::dim
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::dim -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::dim
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::dim -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::dim
+  D["cli/print.ts runHeadless()"]:::dim --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::dim --> G["processUserInput()<br/>斜杠命令、附件"]:::dim
+  E["launchRepl() → screens/REPL.tsx"]:::dim --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::dim --> I["REPL.onQuery → onQueryImpl"]:::dim
+  G["processUserInput()<br/>斜杠命令、附件"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  I["REPL.onQuery → onQueryImpl"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+--- 其他情况走正常路径：打一个 `cli_entry` 性能点，`startCapturingEarlyInput()` 先把用户已经敲下的字缓存起来，然后才动态 `import('../main.js')` 并调用它的 `main()`。
+flowchart TD
+  A["claude ...（cli.js）"]:::done --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on -->|"只有 --version"| V["--version：打印版本号后返回"]:::dim
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::on -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::dim
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::dim
+  D["cli/print.ts runHeadless()"]:::dim --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::dim --> G["processUserInput()<br/>斜杠命令、附件"]:::dim
+  E["launchRepl() → screens/REPL.tsx"]:::dim --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::dim --> I["REPL.onQuery → onQueryImpl"]:::dim
+  G["processUserInput()<br/>斜杠命令、附件"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  I["REPL.onQuery → onQueryImpl"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+--- `main.tsx` 解析参数后分岔：命令行里有 `-p` / `--print`、`--init-only`、`--sdk-url`，或者 stdout 不是终端，就算非交互（`isNonInteractive`）；否则走交互界面。
+flowchart TD
+  A["claude ...（cli.js）"]:::done --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|"只有 --version"| V["--version：打印版本号后返回"]:::dim
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::dim
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::on -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::dim
+  D["cli/print.ts runHeadless()"]:::dim --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::dim --> G["processUserInput()<br/>斜杠命令、附件"]:::dim
+  E["launchRepl() → screens/REPL.tsx"]:::dim --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::dim --> I["REPL.onQuery → onQueryImpl"]:::dim
+  G["processUserInput()<br/>斜杠命令、附件"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  I["REPL.onQuery → onQueryImpl"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+--- 非交互路径：动态导入 `cli/print.js` 调 `runHeadless`，经 `ask()` 创建 `QueryEngine`，`submitMessage()` 里先 `processUserInput()` 处理斜杠命令和附件，再调用 `query()`。
+flowchart TD
+  A["claude ...（cli.js）"]:::done --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|"只有 --version"| V["--version：打印版本号后返回"]:::dim
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::on
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::dim
+  D["cli/print.ts runHeadless()"]:::on --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::on --> G["processUserInput()<br/>斜杠命令、附件"]:::on
+  E["launchRepl() → screens/REPL.tsx"]:::dim --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::dim --> I["REPL.onQuery → onQueryImpl"]:::dim
+  G["processUserInput()<br/>斜杠命令、附件"]:::on --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  I["REPL.onQuery → onQueryImpl"]:::dim --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+--- 交互路径：`launchRepl` 起 Ink 界面。用户按下回车，`handlePromptSubmit` 调 `processUserInput()`，`REPL` 的 `onQuery` → `onQueryImpl` 再调用 `query()`。
+flowchart TD
+  A["claude ...（cli.js）"]:::done --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|"只有 --version"| V["--version：打印版本号后返回"]:::dim
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::done
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::on
+  D["cli/print.ts runHeadless()"]:::done --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::done --> G["processUserInput()<br/>斜杠命令、附件"]:::done
+  E["launchRepl() → screens/REPL.tsx"]:::on --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::on --> I["REPL.onQuery → onQueryImpl"]:::on
+  G["processUserInput()<br/>斜杠命令、附件"]:::done --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  I["REPL.onQuery → onQueryImpl"]:::on --> Q["query.ts query()<br/>主循环（第 1 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::dim --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+--- 两条路在 `query()` 汇合：循环只有一个，界面有好几个。往下是请求模型（第 2 章）和执行工具（第 3 章）。
+flowchart TD
+  A["claude ...（cli.js）"]:::done --> B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|"只有 --version"| V["--version：打印版本号后返回"]:::dim
+  B["entrypoints/cli.tsx main()<br/>快速路径检查"]:::done -->|普通启动| C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|"-p / --print / SDK / 非 TTY"| D["cli/print.ts runHeadless()"]:::done
+  C["main.tsx main() → run()<br/>解析参数、初始化、加载工具/MCP/Agent 定义"]:::done -->|交互模式| E["launchRepl() → screens/REPL.tsx"]:::done
+  D["cli/print.ts runHeadless()"]:::done --> F["QueryEngine.ts ask()<br/>→ submitMessage()"]:::done --> G["processUserInput()<br/>斜杠命令、附件"]:::done
+  E["launchRepl() → screens/REPL.tsx"]:::done --> H["handlePromptSubmit.ts<br/>→ processUserInput()"]:::done --> I["REPL.onQuery → onQueryImpl"]:::done
+  G["processUserInput()<br/>斜杠命令、附件"]:::done --> Q["query.ts query()<br/>主循环（第 1 章）"]:::on
+  I["REPL.onQuery → onQueryImpl"]:::done --> Q["query.ts query()<br/>主循环（第 1 章）"]:::on
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::on --> R["services/api/claude.ts<br/>请求模型（第 2 章）"]:::dim
+  Q["query.ts query()<br/>主循环（第 1 章）"]:::on --> T["services/tools/<br/>执行工具（第 3 章）"]:::dim
+:::
 
 两条路的终点是同一个函数。无界面模式下，`print.ts` 通过 `QueryEngine` 驱动：
 
+::: tabs
+@@ Claude Code -p
 @cc QueryEngine.ts#L675-L686
-
-交互模式下，`REPL.tsx` 自己组装好参数，直接调用：
-
+无界面：`QueryEngine.submitMessage` 里调用 `query()`，把事件转成 SDK 消息。
+@@ Claude Code REPL
 @cc screens/REPL.tsx#L2793-L2803
+交互：`REPL.tsx` 自己组装好参数，直接调用，把事件交给 React 状态渲染。
+@@ Pi
+@pi packages/coding-agent/src/modes/print-mode.ts#L130-L137
+Pi 的 print 模式同样只调 `session.prompt()`，交互模式也走同一个 `AgentSession`。
+:::
 
 对照两段代码：传给 `query()` 的东西几乎一样——消息、系统提示、用户上下文、系统上下文、`canUseTool`（权限判断的回调，第 6 章）、`toolUseContext`（工具运行需要的一切：工具列表、中止信号、文件读取缓存……）。区别在外面：REPL 把 `query()` 产出的事件交给 React 状态去渲染，`QueryEngine` 把它们转换成 SDK 消息、写进会话、处理 `maxTurns` 和预算。
 

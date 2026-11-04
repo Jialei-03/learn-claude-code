@@ -148,14 +148,43 @@ flowchart TD
 
 认出路径以后，`processMemoryFile` 负责把它们读进来，同时不能出事。看一个会出事的例子：`CLAUDE.md` 引用 `a.md` 和 `b.md`，它们都引用 `shared.md`，`b.md` 还引用回 `CLAUDE.md`：
 
-```mermaid
+::: steps processMemoryFile 展开 @ 引用：深度优先，父文件在前
+--- 从 `CLAUDE.md` 开始。`processedPaths` 是整次发现共用的集合，先把它记进去；内容读出来非空，于是 `result.push` 它自己——在处理引用的循环**之前**，所以父文件排在前面（序号 ①）。
 flowchart LR
-  C["CLAUDE.md ①"] --> A["a.md ②"]
-  A --> S["shared.md ③"]
-  C --> B["b.md ④"]
+  C["CLAUDE.md ①"]:::on --> A["a.md ②"]:::dim
+  A --> S["shared.md ③"]:::dim
+  C --> B["b.md ④"]:::dim
   B -. "已读过，跳过" .-> S
   B -. "已读过，跳过" .-> C
-```
+--- 对第一个引用 `a.md` 递归，`depth + 1`，父亲是 `CLAUDE.md`。集合里没有它，读到、非空，先 push 自己（②），再处理它的引用。
+flowchart LR
+  C["CLAUDE.md ①"]:::done --> A["a.md ②"]:::on
+  A --> S["shared.md ③"]:::dim
+  C --> B["b.md ④"]:::dim
+  B -. "已读过，跳过" .-> S
+  B -. "已读过，跳过" .-> C
+--- `a.md` 引用 `shared.md`，继续往深处走：不在集合里，读到、push（③）。`shared.md` 没有别的引用，这一支到头，回到 `CLAUDE.md` 的循环。
+flowchart LR
+  C["CLAUDE.md ①"]:::done --> A["a.md ②"]:::done
+  A --> S["shared.md ③"]:::on
+  C --> B["b.md ④"]:::dim
+  B -. "已读过，跳过" .-> S
+  B -. "已读过，跳过" .-> C
+--- `CLAUDE.md` 的第二个引用 `b.md`：读到、push（④）。深度优先的结果是：父文件先，子文件紧跟，`shared.md` 归先到达它的 `a.md`。
+flowchart LR
+  C["CLAUDE.md ①"]:::done --> A["a.md ②"]:::done
+  A --> S["shared.md ③"]:::done
+  C --> B["b.md ④"]:::on
+  B -. "已读过，跳过" .-> S
+  B -. "已读过，跳过" .-> C
+--- `b.md` 里的两个引用 `shared.md` 和 `CLAUDE.md` 都已经在 `processedPaths` 里，入口处的检查直接返回，什么也不加。有环、有钻石，每个文件仍然只读一份。另有深度上限 `MAX_INCLUDE_DEPTH`（5）防止过长的链。
+flowchart LR
+  C["CLAUDE.md ①"]:::on --> A["a.md ②"]:::done
+  A --> S["shared.md ③"]:::on
+  C --> B["b.md ④"]:::on
+  B -. "已读过，跳过" .-> S
+  B -. "已读过，跳过" .-> C
+:::
 
 圆圈里的数字是加载顺序，虚线是被拦下的边。拦它们的是这个函数：
 
@@ -219,9 +248,21 @@ flowchart LR
 
 Learn Pi Agent 的做法正好相反。mox 把说明文件拼进系统提示的一节：
 
+::: tabs
+@@ Claude Code
+@cc utils/api.ts#prependUserContext hl=461-473
+说明文件做成第一条 `isMeta` 用户消息，包在 `<system-reminder>` 里；系统提示一个字节不动。
+@@ Pi
+@pi packages/coding-agent/src/core/system-prompt.ts#renderProjectContext
+项目说明渲染成系统提示里的 `project_context` 小节。
+@@ mox
 @mox mox/src/context.ts#discoverContextFiles
-
 @mox mox/src/context.ts#L68-L70
+每个目录取一个文件，拼进系统提示的一节。
+@@ coda
+@code coda/src/memory.mjs#contextMessage
+照 Claude Code：说明文件走第一条用户消息。
+:::
 
 它每个目录只取一个文件（`AGENTS.override.md`、`AGENTS.md`、`CLAUDE.md` 依次找，第一个存在的算数），从全局目录一路排到当前目录，没有引用，没有子目录说明，没有规则。Pi 的 `loadProjectContextFiles` 是同一个思路（Learn Pi Agent 第 6 章读过）。两种放法都对，差别在**改一行说明要付的代价**：
 
@@ -281,6 +322,44 @@ Read 读完文本文件，把完整路径放进 `nestedMemoryAttachmentTriggers`
 @lab node --disable-warning=ExperimentalWarning labs/chapters/04-memory.mjs triggers
 
 整个源码里，只有 `FileReadTool` 登记触发。附件系统自己读文件也走 `FileReadTool.call`（表里第三行：`@` 提及的文件由 `generateFileAttachment` 读，改动检测由 `getChangedFiles` 读），所以它们同样会触发。IDE 里打开的文件走另一条路，直接调用 `getNestedMemoryAttachmentsForFile`。**Edit、Write、Grep、Bash 都不触发。** 第 3 章说过，2.1.88 要求先 Read 再 Edit，所以改文件之前一定读过，触发总会发生；而较新版本里模型可以不读就改，那时子目录里的规则就可能一直没有机会出现——这是由两处源码推出的结论，没有专门录制。清空“已加载”集合的位置也在表里：两条压缩路径和 `/clear`。
+
+::: steps 读到哪里，加载哪里：一份子目录说明怎样进入请求
+--- 任务是先读 `src/api/handler.js`。模型发出一个 Read 调用，这是整条链的起点；Edit、Write、Grep、Bash 都不会触发它。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::on --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::dim --> RES["tool_result<br/>进 toolResults"]:::dim --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::dim --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::dim
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::dim --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::dim --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::dim
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- `FileReadTool` 读完文本文件，把完整路径放进 `nestedMemoryAttachmentTriggers` 集合（读 notebook 和图片的分支各有一行同样的代码）。此刻只是登记，还没有加载任何说明。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::on --> RES["tool_result<br/>进 toolResults"]:::dim --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::dim --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::dim
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::dim --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::dim --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::dim
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- 工具的结果先进入 `toolResults`。随后 `query.ts` 在**工具结果之后**调用 `getAttachmentMessages`，消费触发集合里的路径。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::done --> RES["tool_result<br/>进 toolResults"]:::on --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::on --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::dim
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::dim --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::dim --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::dim
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- `getNestedMemoryAttachmentsForFile` 先检查目标在不在允许的工作目录里，每个触发路径起一个新的 `processedPaths`。阶段一看托管和用户级规则里带 `paths` 的，匹配才附。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::done --> RES["tool_result<br/>进 toolResults"]:::done --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::done --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::on
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::on --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::dim --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::dim
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- 阶段二：从 cwd 往下、直到目标文件所在目录的每一层（不含 cwd，它的 CLAUDE.md 开头就加载过）：`src/CLAUDE.md` 在这里被找到。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::done --> RES["tool_result<br/>进 toolResults"]:::done --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::done --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::done
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::done --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::on --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::dim
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- 阶段三：从仓库根到 cwd 的每一层，只补带 `paths` 的规则。`.claude/rules/api.md` 的 `paths: src/api/**` 匹配这个文件，附上，`load_reason` 是 `path_glob_match`。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::done --> RES["tool_result<br/>进 toolResults"]:::done --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::done --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::done
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::done --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::done --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::on
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::dim --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::dim --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::dim
+--- 去重：`loadedNestedMemoryPaths` 是不会淘汰的集合，`readFileState` 里已有的也不再附。附上的写进 `readFileState`：文字和磁盘不一样（frontmatter 被去掉）就记磁盘原文并标 `isPartialView`，所以这类文件“看过但不算读过”。最后作为 `nested_memory` 消息追加在工具结果后面，录制里就是 `messages[4]`。
+flowchart LR
+  RD["模型 Read<br/>src/api/handler.js"]:::done --> TR["FileReadTool 读完文本文件<br/>路径进 nestedMemoryAttachmentTriggers"]:::done --> RES["tool_result<br/>进 toolResults"]:::done --> GA["query.ts：getAttachmentMessages<br/>工具结果之后消费触发集合"]:::done --> G["getNestedMemoryAttachmentsForFile<br/>先看文件在不在允许的目录里"]:::done
+  G --> P1["阶段一<br/>托管和用户级、带 paths 的规则"]:::done --> P2["阶段二<br/>cwd 往下到目标目录的每一层<br/>CLAUDE.md、无条件规则、匹配的规则"]:::done --> P3["阶段三<br/>仓库根到 cwd<br/>只补带 paths 的规则"]:::done
+  P3 --> DD["memoryFilesToAttachments<br/>loadedNestedMemoryPaths 和 readFileState 去重"]:::on --> W["写进 readFileState<br/>文字和磁盘不同：记磁盘原文 + isPartialView"]:::on --> OUT["nested_memory 消息<br/>追加在工具结果后面，带 load_reason"]:::on
+:::
 
 按需加载的最后一步是去重和记录：
 

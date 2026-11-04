@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url';
 import MarkdownIt from 'markdown-it';
 import { createHighlighter } from 'shiki';
 import { CC, CC_SOURCE, OSS, PI, chapters, parts, type OssName } from '../course/syllabus.ts';
-import { layout, homePage, interviewPage, mapPage, moxMark, sourceIndexPage, workshopPage, type PageMeta } from './templates.ts';
+import { layout, homePage, interviewPage, mapPage, moxMark, setSections, sourceIndexPage, workshopPage, type PageMeta } from './templates.ts';
+import { numberChapter } from './book.mjs';
 
 import { sourceNotes } from '../scripts/source-notes.mjs';
 import { SOURCE_DIR, verifySourcemap } from '../lab/sourcemap.ts';
@@ -180,6 +181,9 @@ function renderExcerpt(kind: 'pi' | 'code' | 'mox' | 'oss' | 'cc', args: string,
     const [a, b] = part.split('-').map(Number);
     for (let i = a; i <= (b ?? a); i++) hl.add(i);
   }
+  // 高亮行必须落在摘录范围里：代码改动后行号漂移，这里会第一时间报出来
+  const outside = [...hl].filter(l => l < ex.start || l > ex.end);
+  if (outside.length) errors.push(`${where.slug}: ${ex.file} 的高亮行 ${outside.join(',')} 不在摘录范围 ${ex.start}–${ex.end} 里`);
   const lineCount = ex.end - ex.start + 1;
   const url = oss
     ? `${OSS[oss].repo}/blob/${OSS[oss].commit}/${ex.file}#L${ex.start}-L${ex.end}`
@@ -295,6 +299,16 @@ const HAS_CWEBP = (() => { try { execFileSync('cwebp', ['-version'], { stdio: 'i
 const usedAssets = new Set<string>();
 
 
+
+// ── 分步动画图与代码标签页（book.mjs 里的组件，参考 hello-algo）───────────
+import { parseSteps, renderSteps, renderTabs } from './book.mjs';
+function renderStepsCommand(args: string, where: string) {
+  const json = runLab(args.trim(), where, false);
+  if (!json) return '';
+  try { const data = JSON.parse(json); return renderSteps(data.title ?? '', data.frames); }
+  catch { errors.push(`${where}: ${args} 的输出不是分步图 JSON`); return ''; }
+}
+
 // ── Markdown ───────────────────────────────────────────────────────
 const md: MarkdownIt = new MarkdownIt({
   html: true,
@@ -320,7 +334,7 @@ md.renderer.rules.table_close = () => '</table></div>';
 export const slugify = (text: string) =>
   text.toLowerCase().replace(/<[^>]+>/g, '').replace(/[`*_~“”"'：:，,。.？?！!（）()、/\\[\]{}|<>@#$%^&+=]/g, '').trim().replace(/\s+/g, '-') || 'section';
 
-interface Heading { level: number; id: string; text: string }
+interface Heading { level: number; id: string; text: string; num?: string }
 
 function renderMarkdown(source: string, headings: Heading[]) {
   const env: Record<string, unknown> = {};
@@ -366,7 +380,7 @@ function preprocess(source: string, where: { slug: string; title: string }) {
       continue;
     }
 
-    const directive = line.match(/^@(pi|cc|code|mox|oss|lab|trace|figure|include|ccsrc|implementation|experiment|journey)\s+(.+)$/);
+    const directive = line.match(/^@(pi|cc|code|mox|oss|lab|trace|steps|figure|include|ccsrc|implementation|experiment|journey)\s+(.+)$/);
     if (directive) {
       const [, kind, args] = directive;
       const html = kind === 'journey' ? COURSE.journey(args.trim())
@@ -377,6 +391,7 @@ function preprocess(source: string, where: { slug: string; title: string }) {
         : kind === 'pi' || kind === 'cc' || kind === 'code' || kind === 'mox' || kind === 'oss' ? renderExcerpt(kind, args, where)
         : kind === 'lab' ? renderLab(args, where.slug)
         : kind === 'trace' ? renderTrace(args, where.slug)
+        : kind === 'steps' ? renderStepsCommand(args, where.slug)
         : renderFigure(args, where.slug);
       out.push('', html.replace(/\n\s*\n/g, '\n'), '');
       continue;
@@ -392,7 +407,11 @@ function preprocess(source: string, where: { slug: string; title: string }) {
       i = j;
       const inner = (text: string) => renderMarkdown(preprocess(text, where), []);
       let html: string;
-      if (type === 'predict') {
+      if (type === 'steps') {
+        html = renderSteps(title, parseSteps(body.join('\n')));
+      } else if (type === 'tabs') {
+        html = renderTabs(body, text => inner(text));
+      } else if (type === 'predict') {
         const split = body.findIndex(l => /^\?\?\?\s*$/.test(l));
         const question = inner(body.slice(0, split < 0 ? body.length : split).join('\n'));
         const answer = split < 0 ? '' : inner(body.slice(split + 1).join('\n'));
@@ -444,6 +463,7 @@ function sectionIndex(html: string, url: string, chapter: string, title: string)
 }
 
 
+const rendered: { chapter: typeof chapters[number]; data: Record<string, string | string[]>; linked: string; headings: (Heading & { num?: string })[] }[] = [];
 for (const chapter of chapters.filter(c => c.status === 'ready' && (!ONLY || c.slug === ONLY))) {
   const path = join(ROOT, 'course', `${chapter.slug}.md`);
   if (!existsSync(path)) {
@@ -454,13 +474,18 @@ for (const chapter of chapters.filter(c => c.status === 'ready' && (!ONLY || c.s
   const { data, body } = parseFrontmatter(readFileSync(path, 'utf8'));
   const where = { slug: chapter.slug, title: chapter.title };
   if ((body.match(/^@(cc|ccsrc) /gm) ?? []).length < 2) errors.push(`${chapter.slug}: 每章至少需要两处 Claude Code 源码摘录（@cc）`);
-  const headings: Heading[] = [];
-  const html = renderMarkdown(preprocess(body, where), headings);
-  // 站内链接：course/xx.md → xx.html
-  const linked = html.replace(/href="(?:\.\/)?([0-9]{2}-[a-z0-9-]+)\.md(#[^"]*)?"/g, 'href="$1.html$2"');
-  const meta: PageMeta = { chapter, frontmatter: data, headings };
-  pages.push({ file: `chapters/${chapter.slug}.html`, html: layout(meta, linked) });
-  searchIndex.push(...sectionIndex(linked, `chapters/${chapter.slug}.html`, `${String(chapter.n).padStart(2, '0')}`, chapter.title));
+  const raw: Heading[] = [];
+  const html = renderMarkdown(preprocess(body, where), raw);
+  // 站内链接：course/xx.md → xx.html；再给标题和图加上编号（3.1、图 3-1）
+  const numbered = numberChapter(html.replace(/href="(?:\.\/)?([0-9]{2}-[a-z0-9-]+)\.md(#[^"]*)?"/g, 'href="$1.html$2"'), chapter.n, raw);
+  rendered.push({ chapter, data, linked: numbered.html, headings: numbered.headings });
+  searchIndex.push(...sectionIndex(numbered.html, `chapters/${chapter.slug}.html`, `${String(chapter.n).padStart(2, '0')}`, chapter.title));
+}
+// 先渲染完所有章节，左侧目录才能列出每一章的小节
+setSections(new Map(rendered.map(r => [r.chapter.slug, r.headings])));
+for (const r of rendered) {
+  const meta: PageMeta = { chapter: r.chapter, frontmatter: r.data, headings: r.headings };
+  pages.push({ file: `chapters/${r.chapter.slug}.html`, html: layout(meta, r.linked) });
 }
 
 if (ONLY) {

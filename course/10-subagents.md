@@ -64,6 +64,73 @@ flowchart TD
 
 子 Agent 不是一种新机制：它是同一个 `query()`，换了一份名单、一份历史、一个取消信号。下面按图上的顺序一站一站读。
 
+把图上的前台这一路，换成按时间往下走的版本：
+
+::: steps 一次前台委派：任务单进去，报告出来
+--- 主 Agent 的回复里有一个 `tool_use`：Agent 工具，参数是 `description`、`prompt`（任务单）、`subagent_type`、`run_in_background`。它穿过第 3 章的流水线；Agent 工具自己被标成只读、并发安全，权限检查直接放行。
+sequenceDiagram
+  participant P as 主 Agent
+  participant A as AgentTool.call
+  participant R as runAgent
+  participant F as 子 Agent 会话文件
+  P->>A: tool_use Agent（reviewer，prompt = 任务单）
+  Note over A: 流水线放行，Agent 工具自己只读、并发安全
+--- `call` 先确定谁来干（`AgentTool.tsx` 第 318–356 行）：`subagent_type` 优先，候选名单是 `activeAgents`，被 deny 规则挡掉或不存在都会报错。接着重新装配工具池（第 568–577 行），不继承父 Agent 的。
+sequenceDiagram
+  participant P as 主 Agent
+  participant A as AgentTool.call
+  participant R as runAgent
+  participant F as 子 Agent 会话文件
+  P->>A: tool_use Agent（reviewer，prompt = 任务单）
+  Note over A: 流水线放行，Agent 工具自己只读、并发安全
+  A->>A: 选定义：subagent_type 优先，查 activeAgents
+  A->>A: assembleToolPool 重新装配工具池
+--- `runAgent` 装配子 Agent 的世界：四道筛子缩工具池，**新的**文件版本记录，初始消息只有任务单一条；系统提示是定义自己的，不是父 Agent 的（`runAgent.ts` 第 368–410 行）。
+sequenceDiagram
+  participant P as 主 Agent
+  participant A as AgentTool.call
+  participant R as runAgent
+  participant F as 子 Agent 会话文件
+  P->>A: tool_use Agent（reviewer，prompt = 任务单）
+  Note over A: 流水线放行，Agent 工具自己只读、并发安全
+  A->>A: 选定义：subagent_type 优先，查 activeAgents
+  A->>A: assembleToolPool 重新装配工具池
+  A->>R: runAgent（定义、任务单、取消信号）
+  R->>R: 四道筛子缩工具池，新的文件版本记录，初始消息只有任务单
+--- 转起来的是主循环的 `query()`，只是换了参数。每条消息先写进子 Agent 自己的会话文件，再 `yield`（第 747–810 行）。所以子 Agent 的工具调用只在它自己的账本里，父会话保持干净。
+sequenceDiagram
+  participant P as 主 Agent
+  participant A as AgentTool.call
+  participant R as runAgent
+  participant F as 子 Agent 会话文件
+  P->>A: tool_use Agent（reviewer，prompt = 任务单）
+  Note over A: 流水线放行，Agent 工具自己只读、并发安全
+  A->>A: 选定义：subagent_type 优先，查 activeAgents
+  A->>A: assembleToolPool 重新装配工具池
+  A->>R: runAgent（定义、任务单、取消信号）
+  R->>R: 四道筛子缩工具池，新的文件版本记录，初始消息只有任务单
+  R->>F: 每条消息先写进 agent-id.jsonl，再交给上层
+  Note over R,F: query() 与主循环同一个函数，14 次工具调用只记在这里
+--- 循环退出，`finalizeAgentTool` 只取**最后一条 assistant 回复里的文字**（`agentToolUtils.ts` 第 297–320 行），包成 `tool_result`，后面附 `agentId` 和统计（`AgentTool.tsx` 第 1327–1374 行）。这就是“带着任务单进去，只带一份报告出来”。
+sequenceDiagram
+  participant P as 主 Agent
+  participant A as AgentTool.call
+  participant R as runAgent
+  participant F as 子 Agent 会话文件
+  P->>A: tool_use Agent（reviewer，prompt = 任务单）
+  Note over A: 流水线放行，Agent 工具自己只读、并发安全
+  A->>A: 选定义：subagent_type 优先，查 activeAgents
+  A->>A: assembleToolPool 重新装配工具池
+  A->>R: runAgent（定义、任务单、取消信号）
+  R->>R: 四道筛子缩工具池，新的文件版本记录，初始消息只有任务单
+  R->>F: 每条消息先写进 agent-id.jsonl，再交给上层
+  Note over R,F: query() 与主循环同一个函数，14 次工具调用只记在这里
+  R-->>A: 循环退出
+  A->>A: 取最后一条有文字的回复
+  A-->>P: tool_result：报告 + agentId + 统计
+  Note over P: 中间的搜索和读到的文件都不交回
+:::
+
 ## 主 Agent 写的那张单子
 
 一次委派从一个普通的工具调用开始。Agent 工具（旧名 Task，权限规则、Hook 和旧会话里还写着这个名字，所以源码保留了别名）的参数：
@@ -273,15 +340,80 @@ coda 的 `summarizeRun` 和 `reportForParent` 是这两段的缩写；实验用�
 
 ## 取消：Esc 杀得掉谁
 
-```mermaid
+::: steps Esc 杀得掉谁：前台与后台的取消
+--- 先派出两个子 Agent，看它们各自的取消信号接在哪里。`runAgent` 的选择（第 520–528 行）：调用者指定的优先；异步的**新建一个、不连父**；同步的**直接就是父 Agent 的控制器**。
 flowchart TD
-  E["用户按 Esc<br/>父 Agent 当前这一轮的 AbortController.abort()"] --> S["前台子 Agent<br/>共用同一个信号"]
-  E -.->|不连| A["后台子 Agent<br/>自己的 AbortController"]
-  S --> S1["模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]
-  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"] --> A
-  A --> A1["killAsyncAgent：状态改 killed，abort()"]
-  A1 --> A2["通知：status=killed，附已经做出的部分"]
-```
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::on
+  BG["后台子 Agent<br/>自己的 AbortController"]:::on
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::dim
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::dim
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::dim
+  A1["killAsyncAgent：状态改 killed，abort()"]:::dim
+  A2["通知：status=killed，附已经做出的部分"]:::dim
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+--- 用户按 Esc：父 Agent 当前这一轮的 `AbortController.abort()` 被触发。
+flowchart TD
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::dim
+  BG["后台子 Agent<br/>自己的 AbortController"]:::dim
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::on
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::dim
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::dim
+  A1["killAsyncAgent：状态改 killed，abort()"]:::dim
+  A2["通知：status=killed，附已经做出的部分"]:::dim
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+--- 前台子 Agent 和父 Agent 共用同一个信号，所以它的模型请求和工具调用（包括起的 Bash 进程）一起收到取消，`runAgent` 抛 `AbortError`（第 808–810 行），收尾清理子 MCP 和后台 Bash（第 816–847 行）。后台那一条虚线不通：Esc 停不掉它。
+flowchart TD
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::done
+  BG["后台子 Agent<br/>自己的 AbortController"]:::dim
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::done
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::on
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::dim
+  A1["killAsyncAgent：状态改 killed，abort()"]:::dim
+  A2["通知：status=killed，附已经做出的部分"]:::dim
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+--- 后台子 Agent 要用专门的手势：按两次 ctrl+x ctrl+k、主 Agent 调用 TaskStop 工具，或者进程退出时 `registerAsyncAgent` 登记的清理钩子。
+flowchart TD
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::done
+  BG["后台子 Agent<br/>自己的 AbortController"]:::on
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::done
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::done
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::on
+  A1["killAsyncAgent：状态改 killed，abort()"]:::dim
+  A2["通知：status=killed，附已经做出的部分"]:::dim
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+--- `killAsyncAgent` 只对还在运行的任务生效：发 `abort()`、注销清理钩子、状态标成 killed（`LocalAgentTask.tsx` 第 281–303 行）。
+flowchart TD
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::done
+  BG["后台子 Agent<br/>自己的 AbortController"]:::done
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::done
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::done
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::done
+  A1["killAsyncAgent：状态改 killed，abort()"]:::on
+  A2["通知：status=killed，附已经做出的部分"]:::dim
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+--- 被停的子 Agent 并不是白干：运行收尾走 `AbortError` 分支，用 `extractPartialResult` 把最后一条有文字的回复放进通知，父 Agent 收到 `status=killed` 加上已经做出的部分。
+flowchart TD
+  FG["前台子 Agent<br/>取消信号 = 父 Agent 的控制器"]:::done
+  BG["后台子 Agent<br/>自己的 AbortController"]:::done
+  E["用户按 Esc<br/>父 Agent 当前这一轮 abort()"]:::done
+  S1["前台：模型请求和工具调用一起收到取消<br/>runAgent 抛 AbortError，Agent 工具调用被打断"]:::done
+  K["ctrl+x ctrl+k（按两次）/ TaskStop 工具 / 进程退出"]:::done
+  A1["killAsyncAgent：状态改 killed，abort()"]:::done
+  A2["通知：status=killed，附已经做出的部分"]:::on
+  E --> FG --> S1
+  E -.->|不连| BG
+  K --> BG --> A1 --> A2
+:::
 
 前台这一半在 `runAgent` 里：
 
@@ -350,6 +482,34 @@ mox 的 `runSubagent` 是同一个思路的最小版本：
 | 轮数上限 | 定义里的 `maxTurns`，缺省无 | 30 轮 |
 
 最大的差别是后台。mox 的子 Agent 是一次同步的工具调用，父 Agent 一直等着；Claude Code 的后台子 Agent 让父 Agent 可以继续和用户说话，这要求循环支持“没有用户输入也能开始新一轮”，也就是第 1 章那条带优先级的队列。Learn Pi Agent 第 18 章的后台命令用的是同类机制（`sendMessage` 的 `triggerTurn`），只是 mox 的子 Agent 没用上。
+
+工具池和取消信号这两处，三份代码并排看。先看工具池怎么缩：
+
+::: tabs
+@@ Claude Code
+@cc tools/AgentTool/agentToolUtils.ts#L122-L183 hl=142,150-159,163-171
+先过共用的禁用清单，再减去定义的 `disallowedTools`，最后才看 `tools` 允许清单；缺省或 `*` 就不再收缩。
+@@ mox
+@mox mox/src/subagent.ts#L75-L77 hl=76
+一行 `filter`：去掉 `agent`，有 `tools` 才按名字留。
+@@ coda
+@code coda/src/subagents.mjs#resolveChildTools hl=97-99
+三层缩小，`removed` 里记着每个工具是被哪一层拿掉的。
+:::
+
+再看取消信号怎么接：
+
+::: tabs
+@@ Claude Code
+@cc tools/AgentTool/runAgent.ts#L520-L528 hl=524-528
+同步的直接用父 Agent 的控制器；异步的新建一个，不连父。
+@@ mox
+@mox mox/src/subagent.ts#L75-L84 hl=75,80
+`signal` 从参数交给 `runLoop`；mox 只有同步子 Agent，没有后台一路。
+@@ coda
+@code coda/src/subagents.mjs#L220-L227 hl=224
+前台直接把 `signal` 交给子 Engine；后台的 `signal` 由 `BackgroundChildren` 另外创建。
+:::
 
 ## 在 coda 里实现
 

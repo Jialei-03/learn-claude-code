@@ -69,6 +69,65 @@ flowchart TD
 
 @cc services/tools/toolOrchestration.ts#partitionToolCalls hl=97-98,102-105,109-112
 
+::: steps partitionToolCalls 把五个调用切成三批
+--- 模型在一条回复里写了五个调用：读、读、改、读、读。`partitionToolCalls` 从左到右逐个看，手里还没有任何批次。
+flowchart LR
+  R1[Read a.js]:::dim --> R2[Read b.js]:::dim --> E[Edit a.js]:::dim --> R3[Read a.js]:::dim --> R4[Read c.js]:::dim
+--- 第一个 Read：输入能解析，`isConcurrencySafe` 为真。还没有批次，于是新开**第 1 批**，标为并发安全。
+flowchart LR
+  subgraph B1[第 1 批 · 并发]
+    R1[Read a.js]:::on
+  end
+  R2[Read b.js]:::dim --> E[Edit a.js]:::dim --> R3[Read a.js]:::dim --> R4[Read c.js]:::dim
+--- 第二个 Read 也是安全的，**上一批也是安全批**，所以追加进第 1 批：这两个读会同时开始。
+flowchart LR
+  subgraph B1[第 1 批 · 并发]
+    R1[Read a.js]:::done
+    R2[Read b.js]:::on
+  end
+  E[Edit a.js]:::dim --> R3[Read a.js]:::dim --> R4[Read c.js]:::dim
+--- Edit 不是并发安全的：它自己开**第 2 批**。这一批是一道栅栏，后面的调用不能越过它并到前面去。
+flowchart LR
+  subgraph B1[第 1 批 · 并发]
+    R1[Read a.js]:::done
+    R2[Read b.js]:::done
+  end
+  subgraph B2[第 2 批 · 独占]
+    E[Edit a.js]:::on
+  end
+  B1 --> B2
+  R3[Read a.js]:::dim --> R4[Read c.js]:::dim
+--- 第三个 Read 是安全的，但**上一批是独占批**，不能追加，只能新开第 3 批。所以它一定在 Edit 之后执行，读到改过的内容。
+flowchart LR
+  subgraph B1[第 1 批 · 并发]
+    R1[Read a.js]:::done
+    R2[Read b.js]:::done
+  end
+  subgraph B2[第 2 批 · 独占]
+    E[Edit a.js]:::done
+  end
+  subgraph B3[第 3 批 · 并发]
+    R3[Read a.js]:::on
+  end
+  B1 --> B2 --> B3
+  R4[Read c.js]:::dim
+--- 最后一个 Read 追加进第 3 批。结果是三批：`[Read Read] [Edit] [Read Read]`，批内并发，批与批之间按顺序。
+flowchart LR
+  subgraph B1[第 1 批 · 并发]
+    R1[Read a.js]:::done
+    R2[Read b.js]:::done
+  end
+  subgraph B2[第 2 批 · 独占]
+    E[Edit a.js]:::done
+  end
+  subgraph B3[第 3 批 · 并发]
+    R3[Read a.js]:::done
+    R4[Read c.js]:::on
+  end
+  B1 --> B2 --> B3
+:::
+
+
 逐段看：
 
 - 第 96–97 行按名字找工具，再用 zod 的 `safeParse` 解析输入。**解析失败，就不再问工具并发不并发**，直接按“不安全”处理。
@@ -127,24 +186,64 @@ Pi 和 mox 的选择不同：工具并发执行，结果按**调用顺序**放�
 
 调用的资格和时机定下来之后，每个调用各自进入 `runToolUse`，真正的流水线在 `checkPermissionsAndCallTool` 里。先看全貌，虚线是失败出口，每个出口都会产生一条 `tool_result`：
 
-```mermaid
+::: steps 一个 Edit 调用依次过哪些关
+--- 模型的回复里有一个 `tool_use`：`name` 加 `input`。它进入 `runToolUse`，真正的流水线在 `checkPermissionsAndCallTool` 里。先按名字找工具；工具不存在，或者调用已被取消，就不开始。
 flowchart TD
-  A["tool_use：name + input"] --> B["找工具；已取消就不开始"]
-  B --> D["zod safeParse"]
-  D --> V["tool.validateInput"]
-  V --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]
-  H --> P["权限<br/>resolveHookPermissionDecision"]
-  P --> K["tool.call"]
-  K --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]
-  M --> Q["PostToolUse Hook<br/>只能追加信息"]
-  Q --> OK["tool_result（成功）"]
-  B -.->|不存在 / 已取消| ERR
+  A["tool_use：name + input"]:::on --> B["找工具；已取消就不开始"]:::on --> D["zod safeParse"]:::dim --> V["tool.validateInput"]:::dim --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::dim --> P["权限<br/>resolveHookPermissionDecision"]:::dim --> K["tool.call"]:::dim --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::dim --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
   D -.->|解析失败| ERR
   V -.->|result: false| ERR
   P -.->|不是 allow| ERR
-  K -.->|抛错：formatError<br/>+ PostToolUseFailure| ERR
-  ERR["tool_result：is_error<br/>tool_use_id 原样带回"]
-```
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- zod `safeParse`（`toolExecution.ts` 第 615 行）把模型传错的形状变成一段写给模型看的话，比如缺了必填参数。解析失败就走虚线出口，生成一条 `is_error` 的 `tool_result`。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::on --> V["tool.validateInput"]:::dim --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::dim --> P["权限<br/>resolveHookPermissionDecision"]:::dim --> K["tool.call"]:::dim --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::dim --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- 工具自己的 `validateInput`。录制里 `old_string` 找不到、匹配多处的两次 Edit 失败，都在这里被拒（`result === false`），包成 `is_error` 直接 `return`。**后面的 Hook、权限、`call` 都没机会运行**，所以 Hook 看不到这类失败。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::done --> V["tool.validateInput"]:::on --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::dim --> P["权限<br/>resolveHookPermissionDecision"]:::dim --> K["tool.call"]:::dim --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::dim --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::on
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- 校验通过，才轮到 PreToolUse Hook：它给出 allow / ask / deny 的意见，还可以改参数。接着 `resolveHookPermissionDecision` 把 Hook 的意见和权限规则合成最终决定（第 6、7 章展开）；结果不是 allow，走虚线出口。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::done --> V["tool.validateInput"]:::done --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::on --> P["权限<br/>resolveHookPermissionDecision"]:::on --> K["tool.call"]:::dim --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::dim --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- 执行 `tool.call`。抛出的任何异常（包括失败的 Shell 命令）都被接住，`formatError` 拼成 `is_error` 的结果并运行 PostToolUseFailure：异常不会冲出循环，模型总能看到发生了什么。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::done --> V["tool.validateInput"]:::done --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::done --> P["权限<br/>resolveHookPermissionDecision"]:::done --> K["tool.call"]:::on --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::dim --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- 成功后 `mapToolResult` 把结果映射成给模型的文本，大结果落盘。非 MCP 工具在这里 `addToolResult`：**`tool_result` 已经定了**，后面的 Hook 改不了模型看到的这一条。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::done --> V["tool.validateInput"]:::done --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::done --> P["权限<br/>resolveHookPermissionDecision"]:::done --> K["tool.call"]:::done --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::on --> Q["PostToolUse Hook<br/>只能追加信息"]:::dim --> OK["tool_result（成功）"]:::dim
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+--- 最后运行 PostToolUse Hook：它能追加信息、能让后续的循环停下，但只能追加。交回的 `tool_result` 带着原来的 `tool_use_id`，每个调用恰好得到一条结果。
+flowchart TD
+  A["tool_use：name + input"]:::done --> B["找工具；已取消就不开始"]:::done --> D["zod safeParse"]:::done --> V["tool.validateInput"]:::done --> H["PreToolUse Hook<br/>给 allow / ask / deny 意见，可改参数"]:::done --> P["权限<br/>resolveHookPermissionDecision"]:::done --> K["tool.call"]:::done --> M["mapToolResult → 大结果落盘<br/>先把 tool_result 放进结果"]:::done --> Q["PostToolUse Hook<br/>只能追加信息"]:::on --> OK["tool_result（成功）"]:::on
+  B -.->|不存在 / 已取消| ERR["tool_result：is_error<br/>tool_use_id 原样带回"]:::dim
+  D -.->|解析失败| ERR
+  V -.->|result: false| ERR
+  P -.->|不是 allow| ERR
+  K -.->|抛错：formatError + PostToolUseFailure| ERR
+:::
 
 顺序有两个值得记住的结论。
 
@@ -216,6 +315,33 @@ coda 的 `Toolset.execute` 把这条流水线缩成六步，每一步的失败�
 
 新的 `content` 和 `timestamp`，`offset`、`limit` 都是 `undefined`。模型刚改完的版本就是它“知道”的版本，下一次编辑不用重读。Read 里的重复读取优化也靠这个 `undefined` 区分记录的来源：同一段内容没变时，再次 Read 只返回一句“文件没变”，但 Edit 写下的记录不参与，否则会让模型指回改动之前的那次读取。
 
+::: steps Edit 的两次版本检查
+--- Read 把读到的文件写进 `readFileState`（LRU，键是规范化路径）：`content`、读取时的 `timestamp`、`offset`、`limit`，以及 `isPartialView`。这是模型“看到的版本”。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::on --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::dim --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::dim --> V2["call 开头<br/>同样的检查再做一遍"]:::dim --> W["读内容 → writeTextContent<br/>中间没有 await"]:::dim --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::dim
+  R -.->|下一次 Edit 不用重读| V1
+--- Edit 的 `validateInput` 做第一次检查：没有记录或 `isPartialView` 返回 “File has not been read yet”；修改时间晚于记录就返回 “modified since read”（内容相等则放行）；再数 `old_string` 的匹配次数。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::done --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::on --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::dim --> V2["call 开头<br/>同样的检查再做一遍"]:::dim --> W["读内容 → writeTextContent<br/>中间没有 await"]:::dim --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::dim
+  R -.->|下一次 Edit 不用重读| V1
+--- 校验通过后还有 Hook 和权限询问。这段时间里文件可能被别的程序改了，第一次检查的结论已经不可靠。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::done --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::done --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::on --> V2["call 开头<br/>同样的检查再做一遍"]:::dim --> W["读内容 → writeTextContent<br/>中间没有 await"]:::dim --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::dim
+  R -.->|下一次 Edit 不用重读| V1
+--- 所以 `call` 开头把同样的检查再做一遍。注释要求：`mkdir` 这类异步操作放在检查和写入之外，免得两步之间让出执行权，被并发的编辑插进来。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::done --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::done --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::done --> V2["call 开头<br/>同样的检查再做一遍"]:::on --> W["读内容 → writeTextContent<br/>中间没有 await"]:::dim --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::dim
+  R -.->|下一次 Edit 不用重读| V1
+--- 第 444 行读文件内容，到 `writeTextContent` 写入，中间没有 `await`。这只保证同一个进程内不交错；用户的编辑器同时保存，这套检查拦不住。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::done --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::done --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::done --> V2["call 开头<br/>同样的检查再做一遍"]:::done --> W["读内容 → writeTextContent<br/>中间没有 await"]:::on --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::dim
+  R -.->|下一次 Edit 不用重读| V1
+--- 写完立刻刷新记录：新的 `content` 和 `timestamp`，`offset`、`limit` 都是 `undefined`。模型刚改完的版本就是它“知道”的版本，下一次编辑不用重读。
+flowchart LR
+  RD["Read<br/>写入 readFileState<br/>content、timestamp、offset、limit"]:::done --> V1["validateInput<br/>没有记录 / isPartialView：拒绝<br/>修改时间变了且内容变了：拒绝<br/>old_string 零次或多次匹配：拒绝"]:::done --> HP["PreToolUse Hook + 权限询问<br/>用户可能想了一分钟<br/>linter 可能改了文件"]:::done --> V2["call 开头<br/>同样的检查再做一遍"]:::done --> W["读内容 → writeTextContent<br/>中间没有 await"]:::done --> R["刷新 readFileState<br/>新 content、timestamp<br/>offset、limit 为 undefined"]:::on
+  R -.->|下一次 Edit 不用重读| V1
+:::
+
 下面是 coda 里同一套规则的行为，每一步都是真实执行：
 
 @lab node --disable-warning=ExperimentalWarning labs/chapters/03-tools.mjs file-state
@@ -243,7 +369,20 @@ coda 的 `Toolset.execute` 把这条流水线缩成六步，每一步的失败�
 
 **第二种：Read 自己限长，而且不落盘。** 把 Read 的结果存成文件，再让模型用 Read 去读那个文件，会绕成一个圈，所以它的声明是 `Infinity`。它改为在读之前自己拒绝：
 
+::: tabs
+@@ Claude Code
 @cc tools/FileReadTool/limits.ts#L1-L14 hl=3-7,9-13
+超限就抛错，让模型自己用 `offset` 和 `limit` 缩小范围。
+@@ Pi
+@pi packages/coding-agent/src/core/tools/truncate.ts#truncateHead
+read 保留开头，按行数和字节数截断，不返回半行。
+@@ mox
+@mox mox/src/coding/read.ts#L30-L38
+截断后附上“用 offset=N 继续读”的提示。
+@@ coda
+@code coda/src/files.mjs#L111-L115
+照 Claude Code：超过上限直接抛错，提示用 offset 和 limit。
+:::
 
 不给 `limit` 时文件超过 256KB，或者读出的内容超过 25000 个 token，都是**抛错**，错误信息告诉模型用 `offset` 和 `limit`。下半段注释记录了一次实验：把超限改成“截断后返回”，错误率下降了，但平均 token 反而上升（报错只有大约 100 字节，截断却会塞进约 25K token），于是又改了回去。coda 的 Read 照这个思路，实验里 20000 行的文件被拒绝，`offset: 10000, limit: 3` 只返回三行。Pi/mox 选了另一条路：read 保留开头、bash 保留结尾（命令的报错通常在最后），截断时附上“用 offset=N 继续”的提示。
 
@@ -265,6 +404,23 @@ Shell 命令的 stdout 和 stderr 直接写到文件描述符指向的文件里�
 | 结果顺序 | 并发安全的调用按完成顺序，独占的按到达顺序 | 消息按调用顺序（事件按完成顺序） | 按调用顺序 |
 | 先读后改 | 2.1.88 硬规则；更新的版本按模型放宽 | 没有；精确匹配 + 唯一性 | 硬规则 |
 | 大输出 | 落盘 + 2000 字符预览；Read 报错；Bash 直写文件 | read 保留头、bash 保留尾，附继续读的提示 | 落盘 + 预览；Read 报错 |
+
+同一件事——“一条回复里的多个调用怎么排”——在四份代码里的写法，切换标签对照着看：
+
+::: tabs
+@@ Claude Code
+@cc services/tools/toolOrchestration.ts#partitionToolCalls
+相邻分批：安全批只并入紧挨着的上一个安全批，写操作是栅栏。
+@@ Pi
+@pi packages/agent/src/agent-loop.ts#L518-L533
+整条回复要么全部并行、要么全部串行，只要有一个工具声明 `sequential`。
+@@ mox
+@mox mox/src/tools.ts#runTools
+和 Pi 相同的规则：并发执行，结果按调用顺序放回。
+@@ coda
+@code coda/src/tools.mjs#partition
+照 Claude Code 写的十行版本。
+:::
 
 取舍的核心是**谁来保证顺序**。Pi 的设计相当于把它交给模型（别在一条回复里写互相依赖的调用）加上文件锁；Claude Code 把它写进调度，哪怕牺牲一点并行：模型写出 Read、Edit、Read 这样的序列，结果仍然正确。Pi 的做法更简单——没有栅栏，没有按输入判断并发的谓词，工具作者要考虑的事更少。“先读后改”是另一种取舍：硬规则最稳，却让强模型多读一遍，文档里的放宽就是这么来的。
 
